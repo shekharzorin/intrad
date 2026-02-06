@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connection Test</title>
+    <style>body { font-family: monospace; padding: 20px; background: #111; color: #0f0; }</style>
+</head>
+<body>
+    <h2>ANTIGRAVITY CONNECTION TEST</h2>
+    <div id="log">Initializing...</div>
+    <script>
+        const log = document.getElementById('log');
+        function print(msg) { log.innerHTML += '<br>' + msg; }
+
+        async function test() {
+            print("1. Testing NIFTY Data Fetch...");
+            try {
+                const res = await fetch('/api/v1/market/ohlc/NIFTY');
+                const data = await res.json();
+                print("STATUS: " + res.status);
+                print("DATA: " + JSON.stringify(data, null, 2));
+                
+                if(data.status === 'success') {
+                    print("✅ SUCCESS: Data received from Backend.");
+                } else {
+                    print("❌ FAILED: Backend returned error.");
+                }
+            } catch (e) {
+                print("❌ NETWORK ERROR: " + e.message);
+                print("Check if server is running and port 8000 is open.");
+            }
+        }
+        test();
+    </script>
+</body>
+</html>

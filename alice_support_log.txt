@@ -1,0 +1,294 @@
+ALICE BLUE SUPPORT LOG
+Generated: 2026-02-03
+
+SUMMARY:
+- Issue: WebSocket not connecting; no live ticks received.
+- Key failure: get_session_id() returned a response indicating login failure: "User does not login. Please login" (no sessionID returned).
+
+ENVIRONMENT:
+- OS: Windows
+- Python: 3.10.11 (virtualenv .venv)
+- Installed packages: pya3 (v1.0.30), pyotp, python-dotenv, websocket-client
+
+REDACTED .env (masked):
+- ALICEBLUE_USER_ID: 25670***
+- ALICEBLUE_API_KEY: EqLva***
+- ALICEBLUE_TOTP_SECRET: BIOTM***
+
+DEBUG OUTPUTS (redacted / truncated):
+1) get_session_id() response (raw):
+{'userId': None, 'userData': None, 'encKey': None, 'apikey': None, 'stat': 'Ok', 'emsg': 'User does not login. Please login', 'loginType': None, 'version': None, 'fcmToken': None, 'imei': None, 'login': False}
+
+- alice.session_id: None
+- Attempting createSession with session_id=None raised a TypeError on the client library (due to concatenating None into 'Authorization' header).
+
+2) alice_ws_diagnostic.py (short summary):
+- Authentication: PASSED (OTP generated, encryption_key returned)
+- Instrument lookup: NIFTY 50 found (token 26000)
+- start_websocket() returned (no exception), but socket_open() callback never called
+- Monitoring (60s): WebSocket NOT CONNECTED, Ticks received: 0
+- Diagnostic suggestions: Market hours check, socket_open callback not called, subscription failed, or no data for token.
+
+ADDITIONAL OBSERVATIONS:
+- The library's get_session_id() call returns a JSON with 'stat': 'Ok' but 'login': False and 'emsg': 'User does not login. Please login' — this indicates the broker refused to establish a session for the credentials/API key.
+- Because session_id is None, start_websocket() doesn't proceed to connect to the socket (the library requires a sessionID to create the socket session).
+- All attempts were performed during market hours (local time indicated market open).
+
+SUGGESTED ACTIONS (for Alice Blue support):
+- Please check the API key and the account's API/WebSocket permissions. Why does get_session_id() return 'User does not login. Please login' when given correct userId/api_key/OTP? Is there any IP whitelist, account restriction, or additional activation required for WebSocket/API access?
+- If possible, enable WebSocket access for the API key or advise on steps to obtain a sessionID.
+
+SUPPORT MESSAGE TEMPLATE (copy and send to Alice Blue support):
+Subject: WebSocket session not created - get_session_id() returns 'User does not login. Please login'
+
+Hello Alice Blue Support,
+
+I'm attempting to connect to the Alice Blue WebSocket API using the pya3 client. When calling the endpoint to get a session (get_session_id / getsessiondata), the API response is:
+
+{'stat': 'Ok', 'emsg': 'User does not login. Please login', 'login': False, ...}
+
+This results in no sessionID being returned (alice.session_id == None), so the client is unable to create a socket session or receive live ticks.
+
+Environment:
+- Python 3.10; pya3 v1.0.30
+
+Can you please confirm whether my account/API key (user_id: 25670***) has WebSocket access enabled, and whether any IP whitelisting or additional activation is required? I can share more redacted logs if necessary.
+
+Thanks,
+[Your name]
+
+--- END LOG ---
+
+============================================================
+LOW-LEVEL TRACE - 2026-02-03T05:18:52.867752Z
+{
+  "timestamp": "2026-02-03T05:18:52.410380Z",
+  "env_ok": true,
+  "calls": {
+    "encryption_key": {
+      "userId": null,
+      "userData": null,
+      "encKey": null,
+      "apikey": null,
+      "stat": "Ok",
+      "emsg": "User does not login. Please login",
+      "loginType": null,
+      "version": null,
+      "fcmToken": null,
+      "imei": null,
+      "login": false
+    },
+    "get_session_id_with_otp": {
+      "userId": null,
+      "userData": null,
+      "encKey": null,
+      "apikey": null,
+      "stat": "Ok",
+      "emsg": "User does not login. Please login",
+      "loginType": null,
+      "version": null,
+      "fcmToken": null,
+      "imei": null,
+      "login": false
+    },
+    "get_session_id_no_otp": {
+      "userId": null,
+      "userData": null,
+      "encKey": null,
+      "apikey": null,
+      "stat": "Ok",
+      "emsg": "User does not login. Please login",
+      "loginType": null,
+      "version": null,
+      "fcmToken": null,
+      "imei": null,
+      "login": false
+    },
+    "invalid_sess_error": "TypeError('can only concatenate str (not \"NoneType\") to str')",
+    "invalid_sess_trace": "Traceback (most recent call last):\n  File \"debug_alice_lowlevel.py\", line 66, in <module>\n    invalid = alice.invalid_sess(sess)\n  File \"c:\\Users\\kanch\\OneDrive\\Desktop\\alice_trading\\.venv\\lib\\site-packages\\pya3\\alicebluepy.py\", line 697, in invalid_sess\n    'Authorization': 'Bearer ' + self.user_id + ' ' + session_ID,\nTypeError: can only concatenate str (not \"NoneType\") to str\n",
+    "createSession_error": "TypeError('can only concatenate str (not \"NoneType\") to str')",
+    "createSession_trace": "Traceback (most recent call last):\n  File \"debug_alice_lowlevel.py\", line 74, in <module>\n    create = alice.createSession(sess)\n  File \"c:\\Users\\kanch\\OneDrive\\Desktop\\alice_trading\\.venv\\lib\\site-packages\\pya3\\alicebluepy.py\", line 708, in createSession\n    'Authorization': 'Bearer ' + self.user_id + ' ' + session_ID,\nTypeError: can only concatenate str (not \"NoneType\") to str\n"
+  },
+  "client_type": "<class 'pya3.alicebluepy.Aliceblue'>",
+  "generated_otp": "823153",
+  "observed_session_id": null,
+  "client_urls": {
+    "base_url": "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/",
+    "_sub_urls": {
+      "encryption_key": "customer/getAPIEncpkey",
+      "getsessiondata": "customer/getUserSID",
+      "marketwatch_scrips": "marketWatch/fetchMWScrips",
+      "addscrips": "marketWatch/addScripToMW",
+      "getmarketwatch_list": "marketWatch/fetchMWList",
+      "scripdetails": "ScripDetails/getScripQuoteDetails",
+      "getdelete_scrips": "marketWatch/deleteMWScrip",
+      "squareoffposition": "positionAndHoldings/sqrOofPosition",
+      "position_conversion": "positionAndHoldings/positionConvertion",
+      "placeorder": "placeOrder/executePlaceOrder",
+      "modifyorder": "placeOrder/modifyOrder",
+      "marketorder": "placeOrder/executePlaceOrder",
+      "exitboorder": "placeOrder/exitBracketOrder",
+      "bracketorder": "placeOrder/executePlaceOrder",
+      "positiondata": "positionAndHoldings/positionBook",
+      "orderbook": "placeOrder/fetchOrderBook",
+      "tradebook": "placeOrder/fetchTradeBook",
+      "holding": "positionAndHoldings/holdings",
+      "orderhistory": "placeOrder/orderHistory",
+      "cancelorder": "placeOrder/cancelOrder",
+      "profile": "customer/accountDetails",
+      "basket_margin": "basket/getMargin",
+      "fundsrecord": "limits/getRmsLimits",
+      "base_url_socket": "wss://ws1.aliceblueonline.com/NorenWS/"
+    },
+    "websocket_url": "wss://ant.aliceblueonline.com/order-notify/websocket"
+  }
+}
+============================================================
+
+============================================================
+LOW-LEVEL TRACE - 2026-02-04T07:19:16.160876Z
+{
+  "timestamp": "2026-02-04T07:19:15.279109Z",
+  "env_ok": true,
+  "calls": {
+    "encryption_key": {
+      "userId": null,
+      "userData": null,
+      "encKey": "9FHCKCBQGRRN1R10LV7UIO59R48L5TF6",
+      "apikey": null,
+      "stat": "Ok",
+      "emsg": null,
+      "loginType": null,
+      "version": null,
+      "fcmToken": null,
+      "imei": null,
+      "login": true
+    },
+    "get_session_id_with_otp": {
+      "stat": "Ok",
+      "sessionID": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyam9lOFVScGxZU3FTcDB3RDNVemVBQkgxYkpmOE4wSDRDMGVVSWhXUVAwIn0.eyJleHAiOjE3NzUzNjE0MDUsImlhdCI6MTc3MDE3NzQwNSwianRpIjoib25ydHJvOmJmYzNlOWFkLWQwMzktNTk4Ny1kZTBmLTBjMTQxZDY5M2UzYyIsImlzcyI6Imh0dHBzOi8vaWRhYXMuYWxpY2VibHVlb25saW5lLmNvbS9pZGFhcy9yZWFsbXMvQWxpY2VCbHVlIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjE1YTM5Y2RkLTg3YjAtNDMyOC05NzVkLTYzNTg2MDcyNTlhNiIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFsaWNlLWtiIiwic2lkIjoiMjRkZTRkNTctNjBjYS1mYTlmLTQxMTctMGJmMDg2Njc1NjFkIiwiYWxsb3dlZC1vcmlnaW5zIjpbImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMiIsImh0dHA6Ly9sb2NhbGhvc3Q6NTA1MCIsImh0dHA6Ly9sb2NhbGhvc3Q6OTk0MyIsImh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFsaWNlYmx1ZWtiIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhbGljZS1rYiI6eyJyb2xlcyI6WyJHVUVTVF9VU0VSIiwiQUNUSVZFX1VTRVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSBvcGVuaWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwidWNjIjoiMjU2NzA1MSIsImNsaWVudFJvbGUiOlsiR1VFU1RfVVNFUiIsIkFDVElWRV9VU0VSIl0sIm5hbWUiOiJCUkFITUFNIEtPR0lMQU5DSEEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIyNTY3MDUxIiwiZ2l2ZW5fbmFtZSI6IkJSQUhNQU0gS09HSUxBTkNIQSJ9.XvgZQSeahTxnx2EQ-QezTDF5AfuxZzyYAjTgsKuEmnzS2av4XLwHJ2anvIxzFwFm7VeNJ2MlqVRBv6_-pj2oYXo-sl3OxVg16T2CKoXZaH9DtACRjfsINi_N4XlCvX35XfVh9YZyPA4rzKAIQ27DvmKkQgTiWj_o1E2ap6vJBzJl8C21K58e52S-vIWqNjIVCGJE972Y0QZpxC-ix14EdnK1N7aj9GRwu--Vz0P7p__sCza5inxiXHXriYpRawxmRowwthPMIBshGbUhRmK5t42Jt0S4Q5d9qO93SQqqxFUXeeuhDe8M8thkDvfpYDlEmtVIijMkRGStReinOzATOg"
+    },
+    "get_session_id_no_otp": {
+      "stat": "Ok",
+      "sessionID": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyam9lOFVScGxZU3FTcDB3RDNVemVBQkgxYkpmOE4wSDRDMGVVSWhXUVAwIn0.eyJleHAiOjE3NzUzNjE0MDUsImlhdCI6MTc3MDE3NzQwNSwianRpIjoib25ydHJvOmJmYzNlOWFkLWQwMzktNTk4Ny1kZTBmLTBjMTQxZDY5M2UzYyIsImlzcyI6Imh0dHBzOi8vaWRhYXMuYWxpY2VibHVlb25saW5lLmNvbS9pZGFhcy9yZWFsbXMvQWxpY2VCbHVlIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjE1YTM5Y2RkLTg3YjAtNDMyOC05NzVkLTYzNTg2MDcyNTlhNiIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFsaWNlLWtiIiwic2lkIjoiMjRkZTRkNTctNjBjYS1mYTlmLTQxMTctMGJmMDg2Njc1NjFkIiwiYWxsb3dlZC1vcmlnaW5zIjpbImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMiIsImh0dHA6Ly9sb2NhbGhvc3Q6NTA1MCIsImh0dHA6Ly9sb2NhbGhvc3Q6OTk0MyIsImh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFsaWNlYmx1ZWtiIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhbGljZS1rYiI6eyJyb2xlcyI6WyJHVUVTVF9VU0VSIiwiQUNUSVZFX1VTRVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSBvcGVuaWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwidWNjIjoiMjU2NzA1MSIsImNsaWVudFJvbGUiOlsiR1VFU1RfVVNFUiIsIkFDVElWRV9VU0VSIl0sIm5hbWUiOiJCUkFITUFNIEtPR0lMQU5DSEEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIyNTY3MDUxIiwiZ2l2ZW5fbmFtZSI6IkJSQUhNQU0gS09HSUxBTkNIQSJ9.XvgZQSeahTxnx2EQ-QezTDF5AfuxZzyYAjTgsKuEmnzS2av4XLwHJ2anvIxzFwFm7VeNJ2MlqVRBv6_-pj2oYXo-sl3OxVg16T2CKoXZaH9DtACRjfsINi_N4XlCvX35XfVh9YZyPA4rzKAIQ27DvmKkQgTiWj_o1E2ap6vJBzJl8C21K58e52S-vIWqNjIVCGJE972Y0QZpxC-ix14EdnK1N7aj9GRwu--Vz0P7p__sCza5inxiXHXriYpRawxmRowwthPMIBshGbUhRmK5t42Jt0S4Q5d9qO93SQqqxFUXeeuhDe8M8thkDvfpYDlEmtVIijMkRGStReinOzATOg"
+    },
+    "invalid_sess": {
+      "stat": "Ok",
+      "result": null,
+      "message": "SUCCESS"
+    },
+    "createSession": {
+      "stat": "Ok",
+      "result": null,
+      "message": "SUCCESS"
+    }
+  },
+  "client_type": "<class 'pya3.alicebluepy.Aliceblue'>",
+  "generated_otp": "708559",
+  "observed_session_id": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyam9lOFVScGxZU3FTcDB3RDNVemVBQkgxYkpmOE4wSDRDMGVVSWhXUVAwIn0.eyJleHAiOjE3NzUzNjE0MDUsImlhdCI6MTc3MDE3NzQwNSwianRpIjoib25ydHJvOmJmYzNlOWFkLWQwMzktNTk4Ny1kZTBmLTBjMTQxZDY5M2UzYyIsImlzcyI6Imh0dHBzOi8vaWRhYXMuYWxpY2VibHVlb25saW5lLmNvbS9pZGFhcy9yZWFsbXMvQWxpY2VCbHVlIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjE1YTM5Y2RkLTg3YjAtNDMyOC05NzVkLTYzNTg2MDcyNTlhNiIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFsaWNlLWtiIiwic2lkIjoiMjRkZTRkNTctNjBjYS1mYTlmLTQxMTctMGJmMDg2Njc1NjFkIiwiYWxsb3dlZC1vcmlnaW5zIjpbImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMiIsImh0dHA6Ly9sb2NhbGhvc3Q6NTA1MCIsImh0dHA6Ly9sb2NhbGhvc3Q6OTk0MyIsImh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFsaWNlYmx1ZWtiIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhbGljZS1rYiI6eyJyb2xlcyI6WyJHVUVTVF9VU0VSIiwiQUNUSVZFX1VTRVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSBvcGVuaWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwidWNjIjoiMjU2NzA1MSIsImNsaWVudFJvbGUiOlsiR1VFU1RfVVNFUiIsIkFDVElWRV9VU0VSIl0sIm5hbWUiOiJCUkFITUFNIEtPR0lMQU5DSEEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIyNTY3MDUxIiwiZ2l2ZW5fbmFtZSI6IkJSQUhNQU0gS09HSUxBTkNIQSJ9.XvgZQSeahTxnx2EQ-QezTDF5AfuxZzyYAjTgsKuEmnzS2av4XLwHJ2anvIxzFwFm7VeNJ2MlqVRBv6_-pj2oYXo-sl3OxVg16T2CKoXZaH9DtACRjfsINi_N4XlCvX35XfVh9YZyPA4rzKAIQ27DvmKkQgTiWj_o1E2ap6vJBzJl8C21K58e52S-vIWqNjIVCGJE972Y0QZpxC-ix14EdnK1N7aj9GRwu--Vz0P7p__sCza5inxiXHXriYpRawxmRowwthPMIBshGbUhRmK5t42Jt0S4Q5d9qO93SQqqxFUXeeuhDe8M8thkDvfpYDlEmtVIijMkRGStReinOzATOg",
+  "client_urls": {
+    "base_url": "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/",
+    "_sub_urls": {
+      "encryption_key": "customer/getAPIEncpkey",
+      "getsessiondata": "customer/getUserSID",
+      "marketwatch_scrips": "marketWatch/fetchMWScrips",
+      "addscrips": "marketWatch/addScripToMW",
+      "getmarketwatch_list": "marketWatch/fetchMWList",
+      "scripdetails": "ScripDetails/getScripQuoteDetails",
+      "getdelete_scrips": "marketWatch/deleteMWScrip",
+      "squareoffposition": "positionAndHoldings/sqrOofPosition",
+      "position_conversion": "positionAndHoldings/positionConvertion",
+      "placeorder": "placeOrder/executePlaceOrder",
+      "modifyorder": "placeOrder/modifyOrder",
+      "marketorder": "placeOrder/executePlaceOrder",
+      "exitboorder": "placeOrder/exitBracketOrder",
+      "bracketorder": "placeOrder/executePlaceOrder",
+      "positiondata": "positionAndHoldings/positionBook",
+      "orderbook": "placeOrder/fetchOrderBook",
+      "tradebook": "placeOrder/fetchTradeBook",
+      "holding": "positionAndHoldings/holdings",
+      "orderhistory": "placeOrder/orderHistory",
+      "cancelorder": "placeOrder/cancelOrder",
+      "profile": "customer/accountDetails",
+      "basket_margin": "basket/getMargin",
+      "fundsrecord": "limits/getRmsLimits",
+      "base_url_socket": "wss://ws1.aliceblueonline.com/NorenWS/"
+    },
+    "websocket_url": "wss://ant.aliceblueonline.com/order-notify/websocket"
+  }
+}
+============================================================
+
+============================================================
+LOW-LEVEL TRACE - 2026-02-04T09:05:09.879213Z
+{
+  "timestamp": "2026-02-04T09:05:08.884548Z",
+  "env_ok": true,
+  "calls": {
+    "encryption_key": {
+      "userId": null,
+      "userData": null,
+      "encKey": "QC2APPHP3EWZKM5KKD1BMXJTWO2KETSB",
+      "apikey": null,
+      "stat": "Ok",
+      "emsg": null,
+      "loginType": null,
+      "version": null,
+      "fcmToken": null,
+      "imei": null,
+      "login": true
+    },
+    "get_session_id_with_otp": {
+      "stat": "Ok",
+      "sessionID": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyam9lOFVScGxZU3FTcDB3RDNVemVBQkgxYkpmOE4wSDRDMGVVSWhXUVAwIn0.eyJleHAiOjE3NzUzNjE0MDUsImlhdCI6MTc3MDE3NzQwNSwianRpIjoib25ydHJvOmJmYzNlOWFkLWQwMzktNTk4Ny1kZTBmLTBjMTQxZDY5M2UzYyIsImlzcyI6Imh0dHBzOi8vaWRhYXMuYWxpY2VibHVlb25saW5lLmNvbS9pZGFhcy9yZWFsbXMvQWxpY2VCbHVlIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjE1YTM5Y2RkLTg3YjAtNDMyOC05NzVkLTYzNTg2MDcyNTlhNiIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFsaWNlLWtiIiwic2lkIjoiMjRkZTRkNTctNjBjYS1mYTlmLTQxMTctMGJmMDg2Njc1NjFkIiwiYWxsb3dlZC1vcmlnaW5zIjpbImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMiIsImh0dHA6Ly9sb2NhbGhvc3Q6NTA1MCIsImh0dHA6Ly9sb2NhbGhvc3Q6OTk0MyIsImh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFsaWNlYmx1ZWtiIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhbGljZS1rYiI6eyJyb2xlcyI6WyJHVUVTVF9VU0VSIiwiQUNUSVZFX1VTRVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSBvcGVuaWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwidWNjIjoiMjU2NzA1MSIsImNsaWVudFJvbGUiOlsiR1VFU1RfVVNFUiIsIkFDVElWRV9VU0VSIl0sIm5hbWUiOiJCUkFITUFNIEtPR0lMQU5DSEEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIyNTY3MDUxIiwiZ2l2ZW5fbmFtZSI6IkJSQUhNQU0gS09HSUxBTkNIQSJ9.XvgZQSeahTxnx2EQ-QezTDF5AfuxZzyYAjTgsKuEmnzS2av4XLwHJ2anvIxzFwFm7VeNJ2MlqVRBv6_-pj2oYXo-sl3OxVg16T2CKoXZaH9DtACRjfsINi_N4XlCvX35XfVh9YZyPA4rzKAIQ27DvmKkQgTiWj_o1E2ap6vJBzJl8C21K58e52S-vIWqNjIVCGJE972Y0QZpxC-ix14EdnK1N7aj9GRwu--Vz0P7p__sCza5inxiXHXriYpRawxmRowwthPMIBshGbUhRmK5t42Jt0S4Q5d9qO93SQqqxFUXeeuhDe8M8thkDvfpYDlEmtVIijMkRGStReinOzATOg"
+    },
+    "get_session_id_no_otp": {
+      "stat": "Ok",
+      "sessionID": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyam9lOFVScGxZU3FTcDB3RDNVemVBQkgxYkpmOE4wSDRDMGVVSWhXUVAwIn0.eyJleHAiOjE3NzUzNjE0MDUsImlhdCI6MTc3MDE3NzQwNSwianRpIjoib25ydHJvOmJmYzNlOWFkLWQwMzktNTk4Ny1kZTBmLTBjMTQxZDY5M2UzYyIsImlzcyI6Imh0dHBzOi8vaWRhYXMuYWxpY2VibHVlb25saW5lLmNvbS9pZGFhcy9yZWFsbXMvQWxpY2VCbHVlIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjE1YTM5Y2RkLTg3YjAtNDMyOC05NzVkLTYzNTg2MDcyNTlhNiIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFsaWNlLWtiIiwic2lkIjoiMjRkZTRkNTctNjBjYS1mYTlmLTQxMTctMGJmMDg2Njc1NjFkIiwiYWxsb3dlZC1vcmlnaW5zIjpbImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMiIsImh0dHA6Ly9sb2NhbGhvc3Q6NTA1MCIsImh0dHA6Ly9sb2NhbGhvc3Q6OTk0MyIsImh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFsaWNlYmx1ZWtiIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhbGljZS1rYiI6eyJyb2xlcyI6WyJHVUVTVF9VU0VSIiwiQUNUSVZFX1VTRVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSBvcGVuaWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwidWNjIjoiMjU2NzA1MSIsImNsaWVudFJvbGUiOlsiR1VFU1RfVVNFUiIsIkFDVElWRV9VU0VSIl0sIm5hbWUiOiJCUkFITUFNIEtPR0lMQU5DSEEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIyNTY3MDUxIiwiZ2l2ZW5fbmFtZSI6IkJSQUhNQU0gS09HSUxBTkNIQSJ9.XvgZQSeahTxnx2EQ-QezTDF5AfuxZzyYAjTgsKuEmnzS2av4XLwHJ2anvIxzFwFm7VeNJ2MlqVRBv6_-pj2oYXo-sl3OxVg16T2CKoXZaH9DtACRjfsINi_N4XlCvX35XfVh9YZyPA4rzKAIQ27DvmKkQgTiWj_o1E2ap6vJBzJl8C21K58e52S-vIWqNjIVCGJE972Y0QZpxC-ix14EdnK1N7aj9GRwu--Vz0P7p__sCza5inxiXHXriYpRawxmRowwthPMIBshGbUhRmK5t42Jt0S4Q5d9qO93SQqqxFUXeeuhDe8M8thkDvfpYDlEmtVIijMkRGStReinOzATOg"
+    },
+    "invalid_sess": {
+      "stat": "Ok",
+      "result": null,
+      "message": "SUCCESS"
+    },
+    "createSession": {
+      "stat": "Ok",
+      "result": null,
+      "message": "SUCCESS"
+    }
+  },
+  "client_type": "<class 'pya3.alicebluepy.Aliceblue'>",
+  "generated_otp": "950178",
+  "observed_session_id": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyam9lOFVScGxZU3FTcDB3RDNVemVBQkgxYkpmOE4wSDRDMGVVSWhXUVAwIn0.eyJleHAiOjE3NzUzNjE0MDUsImlhdCI6MTc3MDE3NzQwNSwianRpIjoib25ydHJvOmJmYzNlOWFkLWQwMzktNTk4Ny1kZTBmLTBjMTQxZDY5M2UzYyIsImlzcyI6Imh0dHBzOi8vaWRhYXMuYWxpY2VibHVlb25saW5lLmNvbS9pZGFhcy9yZWFsbXMvQWxpY2VCbHVlIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjE1YTM5Y2RkLTg3YjAtNDMyOC05NzVkLTYzNTg2MDcyNTlhNiIsInR5cCI6IkJlYXJlciIsImF6cCI6ImFsaWNlLWtiIiwic2lkIjoiMjRkZTRkNTctNjBjYS1mYTlmLTQxMTctMGJmMDg2Njc1NjFkIiwiYWxsb3dlZC1vcmlnaW5zIjpbImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMiIsImh0dHA6Ly9sb2NhbGhvc3Q6NTA1MCIsImh0dHA6Ly9sb2NhbGhvc3Q6OTk0MyIsImh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFsaWNlYmx1ZWtiIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhbGljZS1rYiI6eyJyb2xlcyI6WyJHVUVTVF9VU0VSIiwiQUNUSVZFX1VTRVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSBvcGVuaWQiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwidWNjIjoiMjU2NzA1MSIsImNsaWVudFJvbGUiOlsiR1VFU1RfVVNFUiIsIkFDVElWRV9VU0VSIl0sIm5hbWUiOiJCUkFITUFNIEtPR0lMQU5DSEEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIyNTY3MDUxIiwiZ2l2ZW5fbmFtZSI6IkJSQUhNQU0gS09HSUxBTkNIQSJ9.XvgZQSeahTxnx2EQ-QezTDF5AfuxZzyYAjTgsKuEmnzS2av4XLwHJ2anvIxzFwFm7VeNJ2MlqVRBv6_-pj2oYXo-sl3OxVg16T2CKoXZaH9DtACRjfsINi_N4XlCvX35XfVh9YZyPA4rzKAIQ27DvmKkQgTiWj_o1E2ap6vJBzJl8C21K58e52S-vIWqNjIVCGJE972Y0QZpxC-ix14EdnK1N7aj9GRwu--Vz0P7p__sCza5inxiXHXriYpRawxmRowwthPMIBshGbUhRmK5t42Jt0S4Q5d9qO93SQqqxFUXeeuhDe8M8thkDvfpYDlEmtVIijMkRGStReinOzATOg",
+  "client_urls": {
+    "base_url": "https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/",
+    "_sub_urls": {
+      "encryption_key": "customer/getAPIEncpkey",
+      "getsessiondata": "customer/getUserSID",
+      "marketwatch_scrips": "marketWatch/fetchMWScrips",
+      "addscrips": "marketWatch/addScripToMW",
+      "getmarketwatch_list": "marketWatch/fetchMWList",
+      "scripdetails": "ScripDetails/getScripQuoteDetails",
+      "getdelete_scrips": "marketWatch/deleteMWScrip",
+      "squareoffposition": "positionAndHoldings/sqrOofPosition",
+      "position_conversion": "positionAndHoldings/positionConvertion",
+      "placeorder": "placeOrder/executePlaceOrder",
+      "modifyorder": "placeOrder/modifyOrder",
+      "marketorder": "placeOrder/executePlaceOrder",
+      "exitboorder": "placeOrder/exitBracketOrder",
+      "bracketorder": "placeOrder/executePlaceOrder",
+      "positiondata": "positionAndHoldings/positionBook",
+      "orderbook": "placeOrder/fetchOrderBook",
+      "tradebook": "placeOrder/fetchTradeBook",
+      "holding": "positionAndHoldings/holdings",
+      "orderhistory": "placeOrder/orderHistory",
+      "cancelorder": "placeOrder/cancelOrder",
+      "profile": "customer/accountDetails",
+      "basket_margin": "basket/getMargin",
+      "fundsrecord": "limits/getRmsLimits",
+      "base_url_socket": "wss://ws1.aliceblueonline.com/NorenWS/"
+    },
+    "websocket_url": "wss://ant.aliceblueonline.com/order-notify/websocket"
+  }
+}
+============================================================

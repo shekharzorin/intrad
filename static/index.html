@@ -142,6 +142,7 @@
 
             <div class="nav-group">
                 <button class="nav-btn active" onclick="showTab(this, 'dashboard')">📊 Main Dashboard</button>
+                <button class="nav-btn" onclick="showTab(this, 'agent-intelligence')">🧠 Agent Intelligence</button>
                 <button class="nav-btn" onclick="showTab(this, 'performance')">📈 Deep Analytics</button>
                 <button class="nav-btn" onclick="showTab(this, 'strategy')">🧩 Strategy Editor</button>
                 <button class="nav-btn" onclick="showTab(this, 'admin')">🛡️ Admin Console</button>
@@ -154,12 +155,21 @@
                     style="margin-bottom: 12px; justify-content: center;">
                     <span id="theme-icon">☀️</span> Switch Theme
                 </button>
-                <div id="broker-mode-sidebar" class="status-badge warning" style="width: 100%;">MOCK MODE</div>
+                <button id="broker-mode-sidebar" class="status-badge warning"
+                    style="width: 100%; cursor: pointer; border: 1px solid transparent;">
+                    MOCK MODE
+                </button>
             </div>
         </aside>
 
         <!-- MAIN AREA -->
         <main class="main-content-v2">
+            <!-- SYSTEM HEALTH NOTICE (SUBTLE) -->
+            <div id="system-health-notice" class="hidden"
+                style="background: rgba(255, 100, 0, 0.05); border-bottom: 1px solid rgba(255, 100, 0, 0.1); padding: 10px 24px; font-size: 0.75rem; color: var(--warning); display: flex; align-items: center; justify-content: center; gap: 10px; z-index: 100;">
+                <span>⚠️ Some intelligence agents are temporarily paused due to API limits. Core system operations
+                    remain unaffected.</span>
+            </div>
 
             <div id="tab-dashboard" class="content-view">
                 <!-- TOP BAR -->
@@ -228,34 +238,7 @@
                     </div>
                 </header>
 
-                <!-- NEW: AGENT STATUS STRIP -->
-                <section class="agent-status-strip">
-                    <div class="status-pill active">
-                        <div class="status-indicator"></div>
-                        MARKET CONTEXT: ACTIVE
-                    </div>
-                    <div class="status-pill active">
-                        <div class="status-indicator"></div>
-                        STRUCTURE BREAK: MONITORING
-                    </div>
-                    <div class="status-pill idle">
-                        <div class="status-indicator"></div>
-                        VALIDATION ENGINE: IDLE
-                    </div>
-                    <div class="status-pill active">
-                        <div class="status-indicator"></div>
-                        RISK PROTOCOLS: SECURE
-                    </div>
-                    <div class="status-pill blocked">
-                        <div class="status-indicator"></div>
-                        EXECUTION: MOCK MODE
-                    </div>
-                    <!-- COMMODITY STATUS PILL -->
-                    <div id="commodity-status-pill" class="status-pill hidden">
-                        <div class="status-indicator"></div>
-                        <span id="commodity-status-text">COMMODITY: IDLE</span>
-                    </div>
-                </section>
+                <!-- KPIs Moved up slightly or kept here -->
 
                 <!-- PRIMARY CARDS (KPIs) -->
                 <section class="kpi-grid">
@@ -281,21 +264,10 @@
                     </div>
                 </section>
 
-                <!-- MAIN 3-COLUMN GRID -->
-                <section class="main-grid-3">
+                <!-- MAIN 2-COLUMN GRID (CLEANER DASHBOARD) -->
+                <section class="main-grid-2">
 
-                    <!-- COL 1: AGENT ENGINE STATUS -->
-                    <div class="grid-col">
-                        <div class="section-header">
-                            <h3>AGENT ENGINE</h3>
-                            <span class="status-dot active"></span>
-                        </div>
-                        <div id="agents-v2-container" class="agent-list-clean">
-                            <!-- Populated by JS Agent V2 Status -->
-                        </div>
-                    </div>
-
-                    <!-- COL 2: SIGNAL INTELLIGENCE -->
+                    <!-- COL 1: SIGNAL INTELLIGENCE -->
                     <div class="grid-col">
                         <div class="section-header">
                             <h3>SIGNAL INTELLIGENCE</h3>
@@ -322,7 +294,7 @@
                         </div>
                     </div>
 
-                    <!-- COL 3: RISK PROTOCOLS -->
+                    <!-- COL 2: RISK PROTOCOLS -->
                     <div class="grid-col">
                         <div class="section-header">
                             <h3>RISK PROTOCOLS</h3>
@@ -351,41 +323,7 @@
 
                 </section>
 
-                <!-- NEW: AGENT INTELLIGENCE & EXPLAINABILITY CENTER -->
-                <section class="explain-section">
-                    <div class="section-header">
-                        <h3>AGENT INTELLIGENCE CENTER</h3>
-                        <span class="badge">LIVE EXPLAINABILITY</span>
-                    </div>
-                    <div id="agent-explain-grid" class="agent-grid-explain">
-                        <!-- Populated by JS -->
-                    </div>
-                </section>
-
-                <!-- NEW: CHATGPT GUIDANCE ADVISOR -->
-                <section class="guidance-section">
-                    <div class="guidance-bubble" onclick="requestAiAdvice()" style="cursor: pointer;">
-                        <div class="ai-avatar">🤖</div>
-                        <div class="ai-content">
-                            <label>AI STRATEGIC ADVISOR (CLICK TO ASK)</label>
-                            <div id="ai-guidance-text">Scanning market structural integrity... Ready to assist.</div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- NEW: DECISION AUDIT TRAIL -->
-                <section class="audit-section">
-                    <div class="section-header">
-                        <h3>DECISION AUDIT TRAIL</h3>
-                        <span class="badge">SECURE LOG</span>
-                    </div>
-                    <div class="audit-container">
-                        <div id="v2-audit-trail" class="audit-list">
-                            <!-- Populated by JS Audit API -->
-                            <div class="audit-row empty">Initializing audit synchronization...</div>
-                        </div>
-                    </div>
-                </section>
+                <!-- AGENT INTELLIGENCE CENTER (MOVED TO DEDICATED TAB) -->
 
                 <!-- POSITIONS TABLE -->
                 <section class="positions-section">
@@ -416,6 +354,101 @@
                 <!-- FOOTER LOGS -->
                 <div class="footer-terminal" id="v3-terminal">
                     <!-- Logs -->
+                </div>
+            </div>
+
+            <!-- VIEW: AGENT INTELLIGENCE CENTER -->
+            <div id="tab-agent-intelligence" class="content-view hidden">
+                <header class="Inst-top-bar" style="border-bottom: 1px solid var(--border); padding: 24px;">
+                    <h2 style="margin: 0; font-weight: 800; letter-spacing: -1px; font-size: 1.8rem;">
+                        AGENT <span style="font-weight: 300; opacity: 0.5;">INTELLIGENCE CENTER</span>
+                    </h2>
+                    <div class="badge success">LIVE MULTI-AGENT SWARM</div>
+                </header>
+
+                <div style="flex: 1; overflow-y: auto; padding-bottom: 40px;">
+                    <!-- AGENT STATUS STRIP (MOVED FROM DASHBOARD) -->
+                    <section class="agent-status-strip" style="margin: 20px;">
+                        <div class="status-pill active">
+                            <div class="status-indicator"></div>
+                            MARKET CONTEXT: ACTIVE
+                        </div>
+                        <div class="status-pill active">
+                            <div class="status-indicator"></div>
+                            STRUCTURE BREAK: MONITORING
+                        </div>
+                        <div class="status-pill idle">
+                            <div class="status-indicator"></div>
+                            VALIDATION ENGINE: IDLE
+                        </div>
+                        <div class="status-pill active">
+                            <div class="status-indicator"></div>
+                            RISK PROTOCOLS: SECURE
+                        </div>
+                        <div class="status-pill blocked">
+                            <div class="status-indicator"></div>
+                            EXECUTION: MOCK MODE
+                        </div>
+                        <div id="commodity-status-pill" class="status-pill hidden">
+                            <div class="status-indicator"></div>
+                            <span id="commodity-status-text">COMMODITY: IDLE</span>
+                        </div>
+                    </section>
+
+                    <div class="intelligence-row">
+                        <!-- AGENT ENGINE STATUS -->
+                        <div class="grid-col">
+                            <div class="section-header">
+                                <h3>AGENT ENGINE</h3>
+                                <span class="status-dot active"></span>
+                            </div>
+                            <div id="agents-v2-container" class="agent-list-clean" style="max-height: 250px;">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+
+                        <!-- CHATGPT GUIDANCE ADVISOR -->
+                        <div class="guidance-section" style="padding: 0;">
+                            <div class="guidance-bubble" onclick="requestAiAdvice()"
+                                style="cursor: pointer; width: 100%; border-radius: 12px; height: 100%; display: flex; align-items: center; padding: 20px; background: rgba(0, 243, 255, 0.05); border: 1px solid var(--border);">
+                                <div class="ai-avatar" style="font-size: 2rem; margin-right: 15px;">🤖</div>
+                                <div class="ai-content">
+                                    <label
+                                        style="font-size: 0.7rem; color: var(--primary); font-weight: 800; letter-spacing: 1px;">AI
+                                        STRATEGIC ADVISOR</label>
+                                    <div id="ai-guidance-text"
+                                        style="font-size: 0.95rem; line-height: 1.5; color: var(--text-main); margin-top: 4px;">
+                                        Scanning market structural integrity... Ready to assist.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AGENT INTELLIGENCE & EXPLAINABILITY CENTER -->
+                    <section class="explain-section" style="padding: 0 20px 24px 20px;">
+                        <div class="section-header" style="margin-bottom: 16px;">
+                            <h3>AGENT NETWORK EXPLAINABILITY</h3>
+                            <span class="badge">DEEP REASONING TRAIL</span>
+                        </div>
+                        <div id="agent-explain-grid" class="agent-grid-explain">
+                            <!-- Populated by JS -->
+                        </div>
+                    </section>
+
+                    <!-- DECISION AUDIT TRAIL -->
+                    <section class="audit-section" style="padding: 0 20px;">
+                        <div class="section-header" style="margin-bottom: 16px;">
+                            <h3>DECISION AUDIT TRAIL</h3>
+                            <span class="badge">SECURE LOG</span>
+                        </div>
+                        <div class="audit-container"
+                            style="max-height: 400px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);">
+                            <div id="v2-audit-trail" class="audit-list">
+                                <!-- Populated by JS -->
+                                <div class="audit-row empty">Initializing audit synchronization...</div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
 
@@ -648,8 +681,9 @@
                         <div
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                             <h3>ACTIVE TRADERS</h3>
-                            <button class="badge" style="background: var(--primary); color: #000; border: none;">+ ADD
-                                USER</button>
+                            <button class="badge"
+                                style="background: var(--primary); color: #000; border: none; cursor: pointer;"
+                                onclick="openAddUserModal()">+ ADD USER</button>
                         </div>
                         <table class="pos-table-v3">
                             <thead>
@@ -660,7 +694,7 @@
                                     <th style="text-align: right;">ACTION</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="admin-traders-body">
                                 <tr>
                                     <td>admin@antigravity.ia</td>
                                     <td><span class="accent-text">OWNER</span></td>
@@ -823,6 +857,94 @@
                 <span class="lbl">Timestamp</span>
                 <span class="val" id="snapshot-time">--:--:--</span>
             </div>
+        </div>
+    </div>
+
+    <!-- ADMIN: ADD USER MODAL -->
+    <div id="add-user-modal" class="auth-overlay hidden">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">SECURE ONBOARDING</div>
+                <div class="auth-subtitle">Add managed entity with READ-ONLY scope</div>
+                <button onclick="closeAddUserModal()"
+                    style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--text-dim); font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+
+            <div class="form-group">
+                <label>USER ID / CLIENT CODE</label>
+                <input type="text" id="add-user-id" placeholder="e.g. AB12345" required>
+            </div>
+
+            <div class="form-group">
+                <label>PASSWORD</label>
+                <input type="password" id="add-user-pass" placeholder="••••••••" required>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label>API KEY</label>
+                    <input type="password" id="add-user-api" placeholder="Masked" required>
+                </div>
+                <div class="form-group">
+                    <label>SECRET KEY</label>
+                    <input type="password" id="add-user-secret" placeholder="Masked" required>
+                </div>
+            </div>
+
+            <div
+                style="margin: 15px 0; padding: 12px; background: rgba(0,243,255,0.05); border: 1px solid rgba(0,243,255,0.2); border-radius: 8px;">
+                <p style="font-size: 0.7rem; color: var(--primary); margin: 0; line-height: 1.4;">
+                    🛡️ <b>SECURITY NOTICE:</b> Managed users are added with restricted permissions.
+                    Execution rights are disabled by default. Credentials are used for validation and discarded.
+                </p>
+            </div>
+
+            <button class="auth-btn" onclick="submitAddUser()">AUTHENTICATE & ONBOARD</button>
+            <button class="nav-btn" onclick="closeAddUserModal()"
+                style="border: 1px solid var(--border); justify-content: center; margin-top: 10px;">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- MODE SELECTION MODAL -->
+    <div id="mode-layer" class="auth-overlay hidden" style="z-index: 9999;">
+        <div class="auth-card" style="width: 500px; max-width: 90%;">
+            <div class="auth-header">
+                <div class="auth-logo">SYSTEM MODE</div>
+                <div class="auth-subtitle">Select Execution Environment</div>
+            </div>
+
+            <div class="mode-grid" style="display: grid; gap: 12px; margin: 20px 0;">
+                <div class="mode-option" id="mode-sel-mock"
+                    style="padding: 15px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                    <div class="mode-title" style="font-weight: 700; font-size: 0.9rem;">MOCK MODE</div>
+                    <div class="mode-desc" style="font-size: 0.75rem; color: var(--text-dim);">Internal logic loop. No
+                        API calls. Zero risk.</div>
+                </div>
+                <div class="mode-option" id="mode-sel-simulation"
+                    style="padding: 15px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                    <div class="mode-title" style="font-weight: 700; font-size: 0.9rem; color: var(--accent);">
+                        SIMULATION</div>
+                    <div class="mode-desc" style="font-size: 0.75rem; color: var(--text-dim);">Historical data replay
+                        with virtual fills.</div>
+                </div>
+                <div class="mode-option" id="mode-sel-paper"
+                    style="padding: 15px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                    <div class="mode-title" style="font-weight: 700; font-size: 0.9rem; color: var(--warning);">PAPER
+                        TRADING</div>
+                    <div class="mode-desc" style="font-size: 0.75rem; color: var(--text-dim);">Live market data. Virtual
+                        execution. Strategy validation.</div>
+                </div>
+                <div class="mode-option" id="mode-sel-real"
+                    style="padding: 15px; border: 1px solid var(--danger); background: rgba(255, 62, 62, 0.05); border-radius: 8px; cursor: pointer; transition: all 0.2s;">
+                    <div class="mode-title" style="font-weight: 700; font-size: 0.9rem; color: var(--danger);">🛑 REAL
+                        TRADING</div>
+                    <div class="mode-desc" style="font-size: 0.75rem; color: var(--text-dim);">Live execution via Broker
+                        API. Real capital at risk.</div>
+                </div>
+            </div>
+
+            <button class="nav-btn"
+                style="width: 100%; justify-content: center; border: 1px solid var(--border);">CANCEL</button>
         </div>
     </div>
 

@@ -1,5 +1,5 @@
-
 import os
+import time
 from openai import OpenAI
 from .manager import AgentEvent
 
@@ -16,6 +16,10 @@ class GuidanceAgent:
                 self.client = OpenAI(api_key=self.api_key)
             except Exception as e:
                 print(f"❌ Failed to initialize OpenAI client: {e}")
+        
+        # Exponential Backoff & Cooldown
+        self.last_retry_time = 0
+        self.cooldown_period = 60 # Start with 60s cooldown for 429
 
     def get_status(self):
         return self.status
@@ -24,7 +28,13 @@ class GuidanceAgent:
         if not self.client:
             return "AI Advisor offline: API Key missing or invalid."
         
+        # Check Cooldown
+        if "PAUSED" in self.status:
+            if time.time() - self.last_retry_time < self.cooldown_period:
+                return "Strategic Insight Paused: Re-evaluating API capacity... (Cooldown Active)"
+        
         try:
+            self.last_retry_time = time.time()
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -34,9 +44,21 @@ class GuidanceAgent:
                 max_tokens=150,
                 temperature=0.3
             )
+            # Reset status if it was paused
+            if self.status == "PAUSED (QUOTA LIMIT)":
+                self.status = "ACTIVE"
+                self.manager.state.system_health = "HEALTHY"
+                self.cooldown_period = 60 # Reset to base
             return response.choices[0].message.content
         except Exception as e:
-            return f"Strategic Link Interrupted: {str(e)}"
+            err_msg = str(e)
+            if "insufficient_quota" in err_msg or "429" in err_msg:
+                self.status = "PAUSED (QUOTA LIMIT)"
+                self.manager.state.system_health = "DEGRADED"
+                # Exponential Backoff
+                self.cooldown_period = min(self.cooldown_period * 2, 3600) # Max 1 hour
+                return "Strategic Insight Paused: Awaiting API quota refresh or plan upgrade. Core system operations remain unaffected."
+            return f"Strategic Link Interrupted: {err_msg}"
 
     def generate_advice(self, last_events):
         # Default Logic

@@ -36,6 +36,14 @@
 
     --font-mono: 'JetBrains Mono', monospace;
     --font-sans: 'Outfit', sans-serif;
+
+    /* Auth & Modal Specifics (Dark) */
+    --auth-bg: radial-gradient(circle at center, #111827 0%, #030712 100%);
+    --auth-card-bg: linear-gradient(165deg, #1A1F2E 0%, #111827 100%);
+    --auth-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    --input-bg: #1E2538;
+    --input-text: #E2E8F0;
+    --input-border: rgba(42, 52, 69, 0.6);
 }
 
 /* LIGHT THEME (Clean 'Fintech-Pro') */
@@ -69,6 +77,14 @@ body.light-theme {
     /* Slate Gray */
 
     --glass-bg: rgba(255, 255, 255, 0.85);
+
+    /* Auth & Modal Specifics (Light) */
+    --auth-bg: radial-gradient(circle at center, rgba(255, 255, 255, 0.95) 0%, rgba(229, 231, 235, 0.95) 100%);
+    --auth-card-bg: #FFFFFF;
+    --auth-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    --input-bg: #F9FAFB;
+    --input-text: #111827;
+    --input-border: #E5E7EB;
 }
 
 * {
@@ -244,6 +260,49 @@ body {
     color: var(--text-main);
 }
 
+/* LIVE DATA TRANSITIONS */
+.price-flash-up {
+    animation: flash-green 0.6s ease-out;
+}
+
+.price-flash-down {
+    animation: flash-red 0.6s ease-out;
+}
+
+@keyframes flash-green {
+    0% {
+        background: rgba(0, 255, 163, 0.2);
+    }
+
+    100% {
+        background: transparent;
+    }
+}
+
+@keyframes flash-red {
+    0% {
+        background: rgba(255, 51, 51, 0.2);
+    }
+
+    100% {
+        background: transparent;
+    }
+}
+
+.stale-text {
+    opacity: 0.5;
+}
+
+.data-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    transition: background 0.3s;
+}
+
 /* Navigation Buttons */
 .nav-group {
     display: flex;
@@ -394,11 +453,17 @@ body {
     gap: 24px;
     padding: 24px 20px;
 
-    /* Strict Flex Filling */
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.main-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    padding: 24px 20px;
     flex: 1;
-    /* Grow to fill remaining space */
     min-height: 0;
-    /* Important for grid within flex */
     overflow: hidden;
     box-sizing: border-box;
 }
@@ -603,36 +668,59 @@ body.light-theme .grid-col {
 }
 
 /* --- AUTHENTICATION OVERLAY --- */
+/* --- THEME ISOLATED AUTH LAYER (Fixed Institutional Theme) --- */
+#auth-layer {
+    --primary: #00F3FF;
+    --primary-glow: rgba(0, 243, 255, 0.15);
+    --bg-dark: #0A0E17;
+    --bg-card: #151A28;
+    --text-main: #F3F4F6;
+    --text-dim: #9CA3AF;
+    --border: #2A3445;
+    --auth-bg: radial-gradient(circle at center, #111827 0%, #030712 100%);
+    --auth-card-bg: linear-gradient(165deg, #1A1F2E 0%, #111827 100%);
+    --auth-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    --input-bg: #1E2538;
+    --input-text: #E2E8F0;
+    --input-border: rgba(42, 52, 69, 0.6);
+}
+
 .auth-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    /* Institutional deep dark background */
-    background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+    background: var(--auth-bg);
     backdrop-filter: blur(12px);
     z-index: 9999;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 24px;
+    transition: background 0.4s ease;
 }
 
 /* Auth Card - Single Centered Premium Card */
 .auth-card {
-    background: linear-gradient(165deg, #1A1F2E 0%, #111827 100%);
-    border: 1px solid rgba(0, 243, 255, 0.12);
+    background: var(--auth-card-bg);
+    border: 1px solid var(--border);
     border-radius: 16px;
     padding: 40px 32px;
     max-width: 420px;
     width: 100%;
-    box-shadow:
-        0 20px 50px rgba(0, 0, 0, 0.5),
-        0 0 30px rgba(0, 243, 255, 0.05);
+    box-shadow: var(--auth-shadow);
     /* Gentle Cyan Glow */
     position: relative;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.4s ease;
+}
+
+#add-user-modal {
+    z-index: 10000;
+}
+
+#add-user-modal .auth-card {
+    max-width: 500px;
 }
 
 .auth-card:hover {
@@ -702,15 +790,13 @@ body.light-theme .grid-col {
 .form-group input {
     width: 100%;
     height: 48px;
-    background: #1E2538;
-    /* Slightly Lighter than Card Background */
-    border: 1px solid rgba(42, 52, 69, 0.6);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
     border-radius: 8px;
     padding: 0 16px;
     font-size: 0.9rem;
     font-family: var(--font-sans);
-    color: #E2E8F0;
-    /* Near White Text */
+    color: var(--input-text);
     transition: all 0.2s ease;
 }
 
@@ -816,8 +902,8 @@ body.light-theme .grid-col {
     width: 48px;
     /* Slightly smaller for better fit */
     height: 48px;
-    background: #1E2538;
-    border: 1px solid rgba(42, 52, 69, 0.8);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
     border-radius: 8px;
     text-align: center;
     font-size: 1.25rem;
@@ -2043,4 +2129,64 @@ body.light-theme .grid-col {
 .snapshot-row .val {
     color: var(--text-main);
     font-family: 'Roboto Mono', monospace;
+}
+
+/* --- MARKET DATA FRESHNESS STYLES --- */
+.stale-text {
+    opacity: 0.5;
+    filter: grayscale(1);
+    transition: all 0.5s ease;
+}
+
+.data-pulse {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 10px var(--success);
+    animation: pulse-ring 2s infinite;
+}
+
+@keyframes pulse-ring {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+}
+
+.price-box {
+    position: relative;
+    overflow: hidden;
+}
+
+/* LIVE TRADING PULSE */
+.pulse-animation {
+    animation: danger-pulse 2s infinite !important;
+}
+
+@keyframes danger-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 62, 62, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(255, 62, 62, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 62, 62, 0);
+    }
 }

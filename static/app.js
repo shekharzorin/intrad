@@ -132,6 +132,7 @@ function showTab(el, tabId) {
     if (el) el.classList.add('active');
 
     if (tabId === 'performance') initAnalytics();
+    if (tabId === 'admin') fetchManagedUsers();
 }
 
 function toggleSettingsPanel() {
@@ -368,6 +369,7 @@ function setupDashboardEvents() {
             }
 
             updateDetectedPatterns(state.selectedMarket); // Update patterns dynamically
+            updateMonitoringScope(); // Sync with backend
             updateDashboardUI();
         };
     });
@@ -378,6 +380,7 @@ function setupDashboardEvents() {
         commSelect.onchange = (e) => {
             state.selectedCommodity = e.target.value;
             console.log("Selected Commodity Switched:", state.selectedCommodity);
+            updateMonitoringScope(); // Sync with backend
             updateDashboardUI();
         };
     }
@@ -390,6 +393,25 @@ function setupDashboardEvents() {
     // Risk Settings Trigger
     const riskBtn = document.querySelector('#tab-settings .auth-btn');
     if (riskBtn) riskBtn.onclick = saveInstitutionalSettings;
+
+    // Execution Mode Modal Triggers
+    const sidebarModeBtn = document.getElementById('broker-mode-sidebar');
+    if (sidebarModeBtn) sidebarModeBtn.onclick = openModeSelectionModal;
+
+    // Mode Selection Buttons (Programmatic Binding)
+    ['mock', 'simulation', 'paper', 'real'].forEach(mode => {
+        const btn = document.getElementById(`mode-sel-${mode}`);
+        if (btn) {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                confirmModeSwitch(mode.toUpperCase());
+            };
+        }
+    });
+
+    // Close Modal Button
+    const closeBtn = document.querySelector('#mode-layer .nav-btn');
+    if (closeBtn) closeBtn.onclick = closeModeModal;
 }
 
 async function fetchSystemData() {
@@ -481,6 +503,22 @@ async function applyCapitalPreset(amount) {
     } catch (err) { console.error("Capital Update Failed"); }
 }
 
+// Monitoring Scope Sync
+async function updateMonitoringScope() {
+    const instruments = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
+    if (state.selectedMarket === 'COMMODITY' || state.selectedCommodity) {
+        instruments.push(state.selectedCommodity);
+    }
+
+    try {
+        await fetch('/api/v1/market/monitor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instruments })
+        });
+    } catch (e) { console.warn("Monitoring Scope Sync Failed"); }
+}
+
 // 1. Market Header & Context Flow Logic
 async function updateMarketHeader() {
     if (!state.metrics) return;
@@ -493,19 +531,31 @@ async function updateMarketHeader() {
         if (!container) return;
 
         if (response.status === 'MARKET_CLOSED') {
-            container.innerHTML = `<div class="status-pill blocked">Market Closed — Live feed stopped safely</div>`;
+            container.innerHTML = `
+                <div class="metric-item price-box" style="border: none;">
+                    <span class="label">${state.selectedMarket}</span>
+                    <span class="val huge" style="font-size: 0.9rem; color: var(--text-dim); opacity: 0.6;">MARKET CLOSED</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (response.status === 'DATA_UNAVAILABLE') {
+            const warningEl = document.getElementById('system-health-notice');
+            if (warningEl) {
+                warningEl.classList.remove('hidden');
+                warningEl.querySelector('span').textContent = `⚠️ NO LIVE FEED: ${response.reason}`;
+            }
             return;
         }
 
         if (response.status === 'success') {
             let dataItems = Array.isArray(response.data) ? response.data : [response];
 
-            // --- COMMODITY FILTERING ---
             if (state.selectedMarket === 'COMMODITY') {
                 dataItems = dataItems.filter(item => item.instrument === state.selectedCommodity);
             }
 
-            // Clear and rebuild if item count changed
             const existingBoxes = container.querySelectorAll('.price-box');
             if (existingBoxes.length !== dataItems.length) {
                 container.innerHTML = '';
@@ -520,6 +570,7 @@ async function updateMarketHeader() {
                         <span class="label"></span>
                         <span class="val huge"></span>
                         <span class="change"></span>
+                        <div class="data-pulse"></div>
                     `;
                     container.appendChild(box);
                 }
@@ -527,24 +578,49 @@ async function updateMarketHeader() {
                 const labelEl = box.querySelector('.label');
                 const ltpEl = box.querySelector('.val');
                 const chgEl = box.querySelector('.change');
+                let pulse = box.querySelector('.data-pulse');
 
                 const symbol = item.instrument || state.selectedMarket;
                 const ltp = item.ltp || 0;
                 const close = item.close || ltp || 1.0;
                 const change = ltp - close;
                 const pct = (close > 0) ? (change / close * 100).toFixed(2) : "0.00";
+                const itemStatus = item.status || item.data_status || 'LIVE';
 
-                labelEl.textContent = symbol;
+                // --- SMOOTH FLASH EFFECT ---
+                const oldLtp = parseFloat(ltpEl.getAttribute('data-last-ltp') || 0);
+                if (oldLtp > 0 && ltp !== oldLtp) {
+                    const flashClass = ltp > oldLtp ? 'price-flash-up' : 'price-flash-down';
+                    box.classList.remove('price-flash-up', 'price-flash-down');
+                    void box.offsetWidth; // Trigger reflow
+                    box.classList.add(flashClass);
+                }
+                ltpEl.setAttribute('data-last-ltp', ltp);
+
+                if (itemStatus === 'STALE' || itemStatus === 'MARKET_CLOSED') {
+                    ltpEl.classList.add('stale-text');
+                    if (pulse) pulse.style.background = 'var(--warning)';
+                    labelEl.innerHTML = `${symbol} <span class="badge warning" style="font-size: 0.5rem; vertical-align: middle;">${itemStatus}</span>`;
+                } else if (itemStatus === 'VIRTUAL') {
+                    ltpEl.classList.remove('stale-text');
+                    if (pulse) pulse.style.background = 'var(--accent)';
+                    labelEl.innerHTML = `${symbol} <span class="badge" style="font-size: 0.5rem; vertical-align: middle; background: var(--border);">VIRTUAL</span>`;
+                } else {
+                    ltpEl.classList.remove('stale-text');
+                    if (pulse) pulse.style.background = 'var(--success)';
+                    labelEl.textContent = symbol;
+                }
+
                 ltpEl.textContent = ltp.toLocaleString('en-IN', { minimumFractionDigits: 2 });
                 chgEl.textContent = `${change >= 0 ? '+' : ''}${pct}%`;
-
                 chgEl.style.color = change >= 0 ? 'var(--success)' : 'var(--danger)';
                 chgEl.style.background = change >= 0 ? 'rgba(0,255,157,0.1)' : 'rgba(255,62,62,0.1)';
                 ltpEl.style.color = change >= 0 ? 'var(--success)' : 'var(--danger)';
-
             });
         }
-    } catch (e) { console.error("Market Feed Error:", e); }
+    } catch (e) {
+        console.error("Market Feed Error:", e);
+    }
 }
 
 // --- CAPITAL MANAGEMENT LOGIC ---
@@ -552,29 +628,55 @@ function updateCapitalSettings() {
     const capSelect = document.getElementById('select-total-cap');
     const usedInput = document.getElementById('input-used-cap-limit');
 
+    let newVal = state.metrics ? state.metrics.total_capital : 100000;
+
     // Total Capital Handling
     if (capSelect.value === 'custom') {
-        const customVal = prompt("Enter Custom Capital Amount (₹):");
-        if (customVal && !isNaN(customVal)) {
-            state.metrics.total_capital = parseFloat(customVal);
+        const customVal = prompt("Enter Custom Capital Amount (₹):", newVal);
+        if (customVal !== null && !isNaN(parseFloat(customVal))) {
+            newVal = parseFloat(customVal);
+        } else {
+            // Revert selector if cancelled
+            if (state.metrics) {
+                const presets = ['50000', '100000', '500000'];
+                capSelect.value = presets.includes(state.metrics.total_capital.toString()) ? state.metrics.total_capital.toString() : 'custom';
+            }
+            return;
         }
     } else {
-        state.metrics.total_capital = parseFloat(capSelect.value);
+        newVal = parseFloat(capSelect.value);
+    }
+
+    if (state.metrics) {
+        state.metrics.total_capital = newVal;
+        // PERSISTENCE FIX: Ensure backend is aware of the new capital allocation
+        applyCapitalPreset(newVal);
     }
 
     // Usage Limit Handling
     const limitVal = parseFloat(usedInput.value);
-    if (!isNaN(limitVal) && limitVal > 0) {
-        state.usageLimit = limitVal;
-    } else {
-        state.usageLimit = null; // No limit
-    }
+    state.usageLimit = (!isNaN(limitVal) && limitVal > 0) ? limitVal : null;
 
     updateDashboardUI();
 }
 
 function updateDashboardUI() {
     if (!state.metrics) return;
+
+    // 0. System Health Monitoring
+    const healthNotice = document.getElementById('system-health-notice');
+    if (healthNotice) {
+        if (state.metrics.system_health === 'DEGRADED') {
+            healthNotice.classList.remove('hidden');
+        } else {
+            healthNotice.classList.add('hidden');
+        }
+    }
+
+    // 0.1 Update Execution Mode Badge
+    if (state.metrics.execution_mode) {
+        updateExecutionModeUI(state.metrics.execution_mode);
+    }
 
     // 1. Top Metrics & Capital Logic
     updateMarketHeader(); // Trigger async header update
@@ -596,6 +698,21 @@ function updateDashboardUI() {
     const total = state.metrics.total_capital;
     const limit = state.usageLimit;
 
+    // --- REACTION SYNC: Keep Selectors and Inputs aligned with single state source ---
+    const topCapSelector = document.getElementById('select-total-cap');
+    const settingsCapInput = document.getElementById('set-total-capital');
+    if (topCapSelector && document.activeElement !== topCapSelector) {
+        const presets = ['50000', '100000', '500000'];
+        if (presets.includes(total.toString())) {
+            topCapSelector.value = total.toString();
+        } else {
+            topCapSelector.value = 'custom';
+        }
+    }
+    if (settingsCapInput && document.activeElement !== settingsCapInput) {
+        settingsCapInput.value = total;
+    }
+
     // Logic: If user sets a limit (Allocated), show that as the numerator.
     // User Request: "50000/100000" -> Limit / Total
     const displayNumerator = (limit && limit > 0) ? limit : usedActual;
@@ -605,10 +722,13 @@ function updateDashboardUI() {
         if (val === null || val === undefined || isNaN(val) || !isFinite(val)) {
             return fallback;
         }
-        return val.toLocaleString();
+        return val.toLocaleString('en-IN');
     };
 
-    document.getElementById('hud-used-cap').textContent = `₹${safeNumber(displayNumerator)} / ₹${safeNumber(total)}`;
+    const exposureCardValue = document.getElementById('hud-used-cap');
+    if (exposureCardValue) {
+        exposureCardValue.textContent = `₹${safeNumber(displayNumerator)} / ₹${safeNumber(total)}`;
+    }
 
     // Calc Available (Free to allocate)
     const available = total - displayNumerator;
@@ -747,14 +867,32 @@ function updateDashboardUI() {
     const auditContainer = document.getElementById('v2-audit-trail');
     if (auditContainer && state.auditTrail.length > 0) {
         const relevantAudit = state.auditTrail.slice(-20).reverse();
-        auditContainer.innerHTML = relevantAudit.map(e => `
-            <div class="audit-row">
-                <span class="time">${e.timestamp.split('T')[1].split('.')[0]}</span>
-                <span class="agent">${e.agent}</span>
-                <span class="data">${JSON.stringify(e.payload)}</span>
-                <span class="conf">${(e.confidence * 100).toFixed(0)}%</span>
-            </div>
-        `).join('');
+        auditContainer.innerHTML = relevantAudit.map(e => {
+            // Clean up payload for human display
+            let cleanData = "Processing Data...";
+            if (e.payload.advice) cleanData = e.payload.advice;
+            else if (e.payload.reason) cleanData = e.payload.reason;
+            else if (e.payload.signal) cleanData = `Signal: ${e.payload.signal} @ ${e.payload.price || ''}`;
+            else if (typeof e.payload === 'object') {
+                // FALLBACK: If it's a quota error, we already sanitized in backend, 
+                // but let's be double sure.
+                const rawStr = JSON.stringify(e.payload);
+                if (rawStr.includes("insufficient_quota") || rawStr.includes("429")) {
+                    cleanData = "External API Quota Limit Reached (Awaiting Refresh)";
+                } else {
+                    cleanData = rawStr.substring(0, 50) + "...";
+                }
+            }
+
+            return `
+                <div class="audit-row">
+                    <span class="time">${e.timestamp.split('T')[1].split('.')[0]}</span>
+                    <span class="agent">${e.agent}</span>
+                    <span class="data" title='${JSON.stringify(e.payload)}'>${cleanData}</span>
+                    <span class="conf">${(e.confidence * 100).toFixed(0)}%</span>
+                </div>
+            `;
+        }).join('');
     }
 
 
@@ -831,16 +969,24 @@ function updateAgentExplainabilityPanel() {
         // Find last decision for this agent
         const lastEvent = [...state.auditTrail].reverse().find(e => e.agent.includes(name));
         const timestamp = lastEvent ? lastEvent.timestamp.split('T')[1].split('.')[0] : '--:--:--';
-        const task = lastEvent ? (lastEvent.payload.reason || lastEvent.payload.advice || 'Processing market data...') : 'Awaiting data cycle...';
+
+        let task = lastEvent ? (lastEvent.payload.reason || lastEvent.payload.advice || 'Processing market data...') : 'Awaiting data cycle...';
+
+        // Sanitize technical errors in task snapshot
+        if (task.includes("insufficient_quota") || task.includes("429")) {
+            task = "Awaiting API quota refresh or plan upgrade.";
+        }
+
+        const isPaused = status.includes("PAUSED");
 
         return `
             <div class="agent-card-interactive" onclick="showAgentDetails('${name}')">
                 <div class="card-header">
                     <h4>${name.toUpperCase()}</h4>
-                    <span class="status-pill status-${status.toLowerCase()}">${status}</span>
+                    <span class="status-pill status-${isPaused ? 'warning' : status.toLowerCase()}">${status}</span>
                 </div>
                 <div class="context-line">${meta.role}</div>
-                <div class="task-snapshot">${task}</div>
+                <div class="task-snapshot ${isPaused ? 'warning-text' : ''}">${task}</div>
                 <div style="font-size: 0.6rem; color: var(--text-dim); margin-top: 12px;">Last Update: ${timestamp}</div>
             </div>
         `;
@@ -940,17 +1086,17 @@ function navigateToAgentDetail(name) {
 
 // --- SYSTEM CONTROLS ---
 function setExecutionMode(mode) {
-    // 1. Update UI
-    document.querySelectorAll('.mode-option').forEach(el => el.classList.remove('selected'));
+    // 1. Update UI (Scoped to settings toggle only)
+    const settingsGrid = document.querySelector('#tab-settings .mode-toggles');
+    if (settingsGrid) {
+        settingsGrid.querySelectorAll('.mode-option').forEach(el => el.classList.remove('selected'));
+    }
+
     const target = document.getElementById(mode === 'AUTO' ? 'mode-auto' : 'mode-manual');
     if (target) target.classList.add('selected');
 
-    // 2. Alert User (Mock Backend Call)
-    console.log(`Execution Mode Switched to: ${mode}`);
-    // await fetch('/api/v1/settings/mode', ... ); 
-
-    const label = document.getElementById('broker-mode-label');
-    if (label) label.textContent = `${mode} EXECUTION`;
+    console.log(`Execution Preference Switched to: ${mode}`);
+    // Optional: await fetch('/api/v1/settings/pref-mode', ... ); 
 }
 
 async function controlSystem(action) {
@@ -1113,9 +1259,85 @@ async function saveInstitutionalSettings() {
     }
 }
 
+// --- ADMIN USER MANAGEMENT FLOW ---
 
+function openAddUserModal() {
+    document.getElementById('add-user-modal').classList.remove('hidden');
+}
 
+function closeAddUserModal() {
+    document.getElementById('add-user-modal').classList.add('hidden');
+    // Clear potentially sensitive inputs immediately
+    document.getElementById('add-user-id').value = '';
+    document.getElementById('add-user-pass').value = '';
+    document.getElementById('add-user-api').value = '';
+    document.getElementById('add-user-secret').value = '';
+}
 
+async function submitAddUser() {
+    const userId = document.getElementById('add-user-id').value;
+    const password = document.getElementById('add-user-pass').value;
+    const apiKey = document.getElementById('add-user-api').value;
+    const secretKey = document.getElementById('add-user-secret').value;
+
+    if (!userId || !password || !apiKey || !secretKey) {
+        alert("Validation Error: All credential fields are mandatory for secure onboarding.");
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/v1/admin/users/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                password: password,
+                api_key: apiKey,
+                secret_key: secretKey
+            })
+        });
+
+        if (response.ok) {
+            alert("Secure Handshake Successful: User onboarding complete.");
+            closeAddUserModal();
+            fetchManagedUsers();
+        } else {
+            const err = await response.json();
+            alert("Onboarding Rejected: " + (err.detail || "Invalid Credentials"));
+        }
+    } catch (err) {
+        alert("Connectivity Error: Failed to establish secure handshake with auth server.");
+    }
+}
+
+async function fetchManagedUsers() {
+    try {
+        const res = await fetch('/api/v1/admin/users/list');
+        const data = await res.json();
+        if (data.status === 'success') {
+            updateTradersTable(data.users);
+        }
+    } catch (err) {
+        console.error("Admin Console: Failed to sync managed entities");
+    }
+}
+
+function updateTradersTable(users) {
+    const tbody = document.getElementById('admin-traders-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = users.map(user => {
+        const statusClass = user.status === 'ACTIVE' || user.status === 'CONNECTED' ? 'success-text' : 'danger-text';
+        return `
+            <tr>
+                <td>${user.user_id}</td>
+                <td><span class="accent-text">${user.role}</span></td>
+                <td><span class="${statusClass}">${user.status}</span></td>
+                <td style="text-align: right; cursor: pointer;">⚙️</td>
+            </tr>
+        `;
+    }).join('');
+}
 
 
 
@@ -1276,6 +1498,119 @@ function updateDefaultMarket() {
     alert(`✓ Default market changed to ${newMarket}\nDashboard updated and refreshed!`);
 
     console.log(`✓ Default market updated to: ${newMarket}. Dashboard refreshed.`);
+}
+
+// --- EXECUTION MODE LOGIC ---
+
+function openModeSelectionModal() {
+    const modal = document.getElementById('mode-layer');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeModeModal() {
+    const modal = document.getElementById('mode-layer');
+    if (modal) modal.classList.add('hidden');
+}
+
+let isSwitchingMode = false;
+
+async function confirmModeSwitch(mode) {
+    if (isSwitchingMode) {
+        // VISIBLE FEEDBACK requirement
+        alert("Mode change unavailable at this time (Operation in progress)");
+        return;
+    }
+
+    if (mode === 'REAL') {
+        const confirmed = confirm("⚠️ CRITICAL WARNING: You are about to enable REAL TRADING with live capital.\n\nAre you absolutely sure you want to proceed?");
+        if (!confirmed) return;
+    }
+
+    isSwitchingMode = true;
+    try {
+        const res = await fetch('/api/v1/system/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: mode })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            updateExecutionModeUI(data.mode);
+            closeModeModal();
+            fetchSystemData();
+        } else {
+            alert("Failed to switch mode: " + data.detail);
+        }
+    } catch (e) {
+        console.error("Mode Switch Error", e);
+        alert("System Error: Could not switch execution mode.");
+    } finally {
+        isSwitchingMode = false;
+    }
+}
+
+function updateExecutionModeUI(mode) {
+    const btn = document.getElementById('broker-mode-sidebar');
+    const label = document.getElementById('broker-mode-label');
+    const simBadge = document.querySelector('.simulation-mode-badge');
+
+    if (btn) {
+        btn.textContent = mode + " MODE";
+        btn.className = 'status-badge'; // Reset base
+    }
+
+    if (label) {
+        label.textContent = `${mode} EXECUTION`;
+        label.className = 'badge'; // Reset base
+    }
+
+    // Modal Option Highlighting
+    const modalGrid = document.querySelector('#mode-layer .mode-grid');
+    if (modalGrid) {
+        modalGrid.querySelectorAll('.mode-option').forEach(opt => opt.classList.remove('selected'));
+        const modalOpt = document.getElementById(`mode-sel-${mode.toLowerCase()}`);
+        if (modalOpt) modalOpt.classList.add('selected');
+    }
+
+    if (mode === 'MOCK') {
+        if (btn) btn.classList.add('warning');
+        if (label) label.classList.add('warning');
+        if (simBadge) simBadge.style.display = 'none';
+    } else if (mode === 'SIMULATION') {
+        if (btn) {
+            btn.classList.add('active');
+            btn.style.background = 'rgba(0, 243, 255, 0.1)';
+            btn.style.color = 'var(--accent)';
+            btn.style.border = '1px solid var(--accent)';
+        }
+        if (label) label.classList.add('warning');
+        if (simBadge) {
+            simBadge.style.display = 'block';
+            simBadge.textContent = "SIMULATION ACTIVE";
+        }
+    } else if (mode === 'PAPER') {
+        if (btn) {
+            btn.classList.add('warning');
+            btn.textContent = "PAPER TRADING";
+            btn.style.background = 'rgba(255, 193, 7, 0.1)';
+            btn.style.color = 'var(--warning)';
+            btn.style.border = '1px solid var(--warning)';
+        }
+        if (label) label.classList.add('warning');
+        if (simBadge) simBadge.style.display = 'none';
+    } else if (mode === 'REAL') {
+        if (btn) {
+            btn.classList.add('danger');
+            btn.textContent = "🔴 LIVE TRADING";
+            btn.style.background = 'rgba(255, 62, 62, 0.1)';
+            btn.style.color = 'var(--danger)';
+            btn.style.border = '1px solid var(--danger)';
+            btn.classList.add('pulse-animation');
+        }
+        if (label) label.className = 'badge success'; // Override to show SUCCESS context
+        if (simBadge) simBadge.style.display = 'none';
+    }
 }
 
 // Initialize default market dropdown on load

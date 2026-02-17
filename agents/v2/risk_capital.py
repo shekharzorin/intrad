@@ -40,8 +40,16 @@ class RiskCapitalAgent:
         event = AgentEvent(
             symbol=symbol,
             agent_name="RiskAgent",
-            payload=payload,
-            confidence=1.0
+            state="APPROVED" if allowed else "REJECTED",
+            reason=reason,
+            context={
+                "daily_pnl": daily_pnl,
+                "capital_limit_pct": 1.0,
+                "utilization_pct": capital_used_pct,
+                "risk_condition": "Nominal" if allowed else "Critical"
+            },
+            confidence=100,
+            payload=payload
         )
         self.manager.emit_event(event)
         return allowed

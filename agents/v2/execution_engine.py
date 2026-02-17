@@ -77,14 +77,22 @@ class ExecutionEngine:
         self.manager.emit_event(AgentEvent(
             symbol=symbol,
             agent_name="ExecutionAgent",
+            state="APPROVED",
+            reason=f"Virtual order {trade_id} executed at {ltp}. Institutional fill simulation complete.",
+            context={
+                "trade_id": trade_id,
+                "mode": mode_label,
+                "signal": signal,
+                "entry_price": ltp
+            },
+            confidence=100,
             payload={
                 "trade_id": trade_id, 
                 "mode": mode_label, 
                 "signal": signal, 
                 "entry": ltp,
                 "note": "Virtual fill executed"
-            },
-            confidence=1.0
+            }
         ))
         
         state.add_log(f"[{mode_label}] Virtual fill confirmed: {trade_id} for {symbol}")

@@ -23,7 +23,9 @@ const state = {
     account_update: null, // Anti-Gravity Account Balance Data
     agentV2Status: {},
     auditTrail: [],
-    theme: localStorage.getItem('theme') || 'dark'
+    theme: localStorage.getItem('theme') || 'dark',
+    commodityFeedStatus: 'DISCONNECTED',  // CONNECTED | DISCONNECTED | CONNECTING | RECONNECTING
+    commodityLastUpdate: null
 };
 
 const agentMetadata = {
@@ -201,16 +203,8 @@ async function handleLogin() {
             document.getElementById('settings-panel').classList.remove('open');
 
             // Set mode label if it exists
-            const modeEl = document.getElementById('broker-mode-label');
-            if (modeEl) {
-                modeEl.textContent = `${data.mode} EXECUTION`;
-                modeEl.className = data.mode === 'REAL' ? 'badge success' : 'badge warning';
-                // Update side indicator too
-                const sidebarMode = document.getElementById('broker-mode-sidebar');
-                if (sidebarMode) {
-                    sidebarMode.textContent = `${data.mode} MODE`;
-                    sidebarMode.className = `status-badge ${data.mode === 'REAL' ? 'success' : 'warning'}`;
-                }
+            if (data.mode) {
+                updateExecutionModeUI(data.mode);
             }
 
             initDashboard();
@@ -333,6 +327,7 @@ function logout() {
 async function initDashboard() {
     fetchSystemData();
     setInterval(fetchSystemData, 2000);
+    initSymbolSearch();
     initAnalytics();
     updateDetectedPatterns(state.selectedMarket); // Initialize pattern display
     initScrollShadow(); // Setup scroll shadow effect
@@ -402,16 +397,25 @@ function setupDashboardEvents() {
     ['mock', 'simulation', 'paper', 'real'].forEach(mode => {
         const btn = document.getElementById(`mode-sel-${mode}`);
         if (btn) {
-            btn.onclick = (e) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
+                console.log(`Mode button clicked: ${mode}`);
                 confirmModeSwitch(mode.toUpperCase());
-            };
+            });
+            // Ensure pointer events are active
+            btn.style.pointerEvents = 'auto';
         }
     });
 
     // Close Modal Button
     const closeBtn = document.querySelector('#mode-layer .nav-btn');
-    if (closeBtn) closeBtn.onclick = closeModeModal;
+    if (closeBtn) {
+        closeBtn.onclick = (e) => {
+            e.preventDefault();
+            closeModeModal();
+        };
+    }
 }
 
 async function fetchSystemData() {
@@ -422,7 +426,13 @@ async function fetchSystemData() {
         const lRes = await fetch('/api/v1/alerts/logs');
         const aRes = await fetch('/api/v1/account/balance');
 
-        if (mRes.ok) state.metrics = await mRes.json();
+        if (mRes.ok) {
+            const data = await mRes.json();
+            state.metrics = data.metrics || data;
+            if (data.market_data) state.market_data = data.market_data;
+            if (data.data_engine_status) state.dataEngineStatus = data.data_engine_status;
+            state.executionMode = state.metrics.execution_mode || data.execution_mode;
+        }
         if (tRes.ok) state.trades = await tRes.json();
         if (lRes.ok) state.logs = await lRes.json();
         if (aRes.ok) {
@@ -524,7 +534,7 @@ async function updateMarketHeader() {
     if (!state.metrics) return;
 
     try {
-        const r = await fetch(`/api/v1/market/ohlc/${state.selectedMarket}`);
+        const r = await fetch(`/api/v1/market/data/${state.selectedMarket}`);
         const response = await r.json();
 
         const container = document.getElementById('dynamic-price-container');
@@ -550,6 +560,12 @@ async function updateMarketHeader() {
         }
 
         if (response.status === 'success') {
+            // Track commodity live feed status
+            if (state.selectedMarket === 'COMMODITY') {
+                state.commodityFeedStatus = response.commodity_feed_status || 'DISCONNECTED';
+                state.commodityLastUpdate = response.commodity_last_update || null;
+            }
+
             let dataItems = Array.isArray(response.data) ? response.data : [response];
 
             if (state.selectedMarket === 'COMMODITY') {
@@ -581,11 +597,20 @@ async function updateMarketHeader() {
                 let pulse = box.querySelector('.data-pulse');
 
                 const symbol = item.instrument || state.selectedMarket;
-                const ltp = item.ltp || 0;
+                const ltp = (item.ltp === 0) ? null : item.ltp; // Normalize 0 to null for loading
                 const close = item.close || ltp || 1.0;
-                const change = ltp - close;
-                const pct = (close > 0) ? (change / close * 100).toFixed(2) : "0.00";
+                const change = (ltp !== null && ltp !== undefined) ? (ltp - close) : 0;
+                const pct = (close > 0 && ltp !== null) ? (change / close * 100).toFixed(2) : "--";
                 const itemStatus = item.status || item.data_status || 'LIVE';
+
+                // --- LOADING STATE PROTECTION ---
+                if (ltp === null || ltp === undefined || itemStatus === 'LOADING') {
+                    ltpEl.innerHTML = '<span class="shimmer-text">LOADING...</span>';
+                    chgEl.textContent = "--%";
+                    chgEl.style.background = 'rgba(255,255,255,0.05)';
+                    labelEl.textContent = symbol;
+                    return;
+                }
 
                 // --- SMOOTH FLASH EFFECT ---
                 const oldLtp = parseFloat(ltpEl.getAttribute('data-last-ltp') || 0);
@@ -608,7 +633,13 @@ async function updateMarketHeader() {
                 } else {
                     ltpEl.classList.remove('stale-text');
                     if (pulse) pulse.style.background = 'var(--success)';
-                    labelEl.textContent = symbol;
+
+                    // Show live source indicator for commodity data
+                    if (state.selectedMarket === 'COMMODITY' && item.data_source && item.data_source !== 'CACHE') {
+                        labelEl.innerHTML = `${symbol} <span class="badge success" style="font-size: 0.45rem; vertical-align: middle;">LIVE ${item.data_source}</span>`;
+                    } else {
+                        labelEl.textContent = symbol;
+                    }
                 }
 
                 ltpEl.textContent = ltp.toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -616,6 +647,22 @@ async function updateMarketHeader() {
                 chgEl.style.color = change >= 0 ? 'var(--success)' : 'var(--danger)';
                 chgEl.style.background = change >= 0 ? 'rgba(0,255,157,0.1)' : 'rgba(255,62,62,0.1)';
                 ltpEl.style.color = change >= 0 ? 'var(--success)' : 'var(--danger)';
+
+                // Show bid/ask/OI for commodity live data
+                if (state.selectedMarket === 'COMMODITY' && item.bid && item.ask) {
+                    let extraInfo = box.querySelector('.commodity-extra');
+                    if (!extraInfo) {
+                        extraInfo = document.createElement('div');
+                        extraInfo.className = 'commodity-extra';
+                        extraInfo.style.cssText = 'font-size: 0.6rem; color: var(--text-dim); margin-top: 2px; display: flex; gap: 8px;';
+                        box.appendChild(extraInfo);
+                    }
+                    const bidAsk = (item.bid > 0 && item.ask > 0)
+                        ? `B:${item.bid.toLocaleString('en-IN')} A:${item.ask.toLocaleString('en-IN')}`
+                        : '';
+                    const oiText = item.open_interest > 0 ? `OI:${item.open_interest.toLocaleString('en-IN')}` : '';
+                    extraInfo.textContent = [bidAsk, oiText].filter(Boolean).join(' | ');
+                }
             });
         }
     } catch (e) {
@@ -673,9 +720,9 @@ function updateDashboardUI() {
         }
     }
 
-    // 0.1 Update Execution Mode Badge
-    if (state.metrics.execution_mode) {
-        updateExecutionModeUI(state.metrics.execution_mode);
+    // 0.1 Update Execution Mode Badge & Data Status
+    if (state.executionMode) {
+        updateExecutionModeUI(state.executionMode, state.dataEngineStatus);
     }
 
     // 1. Top Metrics & Capital Logic
@@ -811,9 +858,26 @@ function updateDashboardUI() {
         if (state.selectedMarket === 'COMMODITY') {
             commStatusPill.classList.remove('hidden');
             const hasPosition = filteredTrades.length > 0;
-            commStatusPill.className = `status-pill ${hasPosition ? 'active' : 'idle'}`;
+
+            // Show live feed connection status
+            const feedStatus = state.commodityFeedStatus || 'DISCONNECTED';
+            let pillClass = 'idle';
+            let statusLabel = `${state.selectedCommodity}: IDLE`;
+
+            if (feedStatus === 'CONNECTED') {
+                pillClass = hasPosition ? 'active' : 'live';
+                statusLabel = `${state.selectedCommodity}: ${hasPosition ? 'ACTIVE' : 'LIVE'}`;
+            } else if (feedStatus === 'CONNECTING' || feedStatus === 'RECONNECTING') {
+                pillClass = 'warning';
+                statusLabel = `${state.selectedCommodity}: ${feedStatus}`;
+            } else if (hasPosition) {
+                pillClass = 'active';
+                statusLabel = `${state.selectedCommodity}: ACTIVE`;
+            }
+
+            commStatusPill.className = `status-pill ${pillClass}`;
             const statusText = document.getElementById('commodity-status-text');
-            if (statusText) statusText.textContent = `${state.selectedCommodity}: ${hasPosition ? 'ACTIVE' : 'IDLE'}`;
+            if (statusText) statusText.textContent = statusLabel;
         } else {
             commStatusPill.classList.add('hidden');
         }
@@ -868,28 +932,18 @@ function updateDashboardUI() {
     if (auditContainer && state.auditTrail.length > 0) {
         const relevantAudit = state.auditTrail.slice(-20).reverse();
         auditContainer.innerHTML = relevantAudit.map(e => {
-            // Clean up payload for human display
-            let cleanData = "Processing Data...";
-            if (e.payload.advice) cleanData = e.payload.advice;
-            else if (e.payload.reason) cleanData = e.payload.reason;
-            else if (e.payload.signal) cleanData = `Signal: ${e.payload.signal} @ ${e.payload.price || ''}`;
-            else if (typeof e.payload === 'object') {
-                // FALLBACK: If it's a quota error, we already sanitized in backend, 
-                // but let's be double sure.
-                const rawStr = JSON.stringify(e.payload);
-                if (rawStr.includes("insufficient_quota") || rawStr.includes("429")) {
-                    cleanData = "External API Quota Limit Reached (Awaiting Refresh)";
-                } else {
-                    cleanData = rawStr.substring(0, 50) + "...";
-                }
-            }
+            // Priority: top-level 'reason', then payload info
+            let cleanData = e.reason || (e.payload ? (e.payload.advice || e.payload.reason || "Logic processed.") : "Awaiting reason...");
+
+            // Map state to color classes
+            const stateClass = e.state ? e.state.toLowerCase() : 'neutral';
 
             return `
-                <div class="audit-row">
-                    <span class="time">${e.timestamp.split('T')[1].split('.')[0]}</span>
+                <div class="audit-row state-${stateClass}">
+                    <span class="time">${e.timestamp.includes('T') ? e.timestamp.split('T')[1].split('.')[0] : e.timestamp}</span>
                     <span class="agent">${e.agent}</span>
-                    <span class="data" title='${JSON.stringify(e.payload)}'>${cleanData}</span>
-                    <span class="conf">${(e.confidence * 100).toFixed(0)}%</span>
+                    <span class="data" title='Decision: ${e.state}\nContext: ${JSON.stringify(e.context || {})}\n\nFull Payload: ${JSON.stringify(e.payload || {})}'>${cleanData}</span>
+                    <span class="conf ${(e.confidence || 0) > 85 ? 'high' : ''}">${(e.confidence || 0).toFixed(0)}%</span>
                 </div>
             `;
         }).join('');
@@ -967,10 +1021,10 @@ function updateAgentExplainabilityPanel() {
         const meta = agentMetadata[name] || { role: 'Core Agent', description: 'Institutional Processing Unit' };
 
         // Find last decision for this agent
-        const lastEvent = [...state.auditTrail].reverse().find(e => e.agent.includes(name));
-        const timestamp = lastEvent ? lastEvent.timestamp.split('T')[1].split('.')[0] : '--:--:--';
+        const lastEvent = [...state.auditTrail].reverse().find(e => e.agent === name || e.agent.includes(name));
+        const timestamp = lastEvent ? (lastEvent.timestamp.includes('T') ? lastEvent.timestamp.split('T')[1].split('.')[0] : lastEvent.timestamp) : '--:--:--';
 
-        let task = lastEvent ? (lastEvent.payload.reason || lastEvent.payload.advice || 'Processing market data...') : 'Awaiting data cycle...';
+        let task = lastEvent ? (lastEvent.reason || lastEvent.payload?.reason || lastEvent.payload?.advice || 'Scanning market triggers...') : 'Awaiting data cycle...';
 
         // Sanitize technical errors in task snapshot
         if (task.includes("insufficient_quota") || task.includes("429")) {
@@ -978,16 +1032,17 @@ function updateAgentExplainabilityPanel() {
         }
 
         const isPaused = status.includes("PAUSED");
+        const cardState = lastEvent ? lastEvent.state?.toLowerCase() : 'neutral';
 
         return `
             <div class="agent-card-interactive" onclick="showAgentDetails('${name}')">
                 <div class="card-header">
-                    <h4>${name.toUpperCase()}</h4>
-                    <span class="status-pill status-${isPaused ? 'warning' : status.toLowerCase()}">${status}</span>
+                    <h4>${name.toUpperCase().replace('AGENT', '')}</h4>
+                    <span class="status-pill status-${cardState || 'idle'}">${status}</span>
                 </div>
                 <div class="context-line">${meta.role}</div>
                 <div class="task-snapshot ${isPaused ? 'warning-text' : ''}">${task}</div>
-                <div style="font-size: 0.6rem; color: var(--text-dim); margin-top: 12px;">Last Update: ${timestamp}</div>
+                <div style="font-size: 0.6rem; color: var(--text-dim); margin-top: 12px;">Last Update: ${timestamp} | Conf: ${(lastEvent?.confidence || 0).toFixed(0)}%</div>
             </div>
         `;
     }).join('');
@@ -1002,11 +1057,26 @@ function toggleAgentDrawer(open) {
 }
 
 function showAgentDetails(agentName) {
-    const meta = agentMetadata[agentName];
-    if (!meta) return;
+    // Robust key matching
+    let meta = agentMetadata[agentName];
+    if (!meta) {
+        // Try case-insensitive fallback or suffix matching
+        const key = Object.keys(agentMetadata).find(k =>
+            k.toLowerCase() === agentName.toLowerCase() ||
+            agentName.toLowerCase().includes(k.toLowerCase())
+        );
+        meta = agentMetadata[key];
+    }
+
+    if (!meta) {
+        console.warn("Metadata not found for agent:", agentName);
+        meta = { role: 'Core Agent', description: 'Institutional intelligence unit processing market structure logic.' };
+    }
 
     document.getElementById('drawer-agent-name').textContent = agentName.replace(/Agent$/, '');
     document.getElementById('drawer-responsibility').textContent = meta.description;
+    document.getElementById('drawer-inputs').textContent = meta.inputs || 'Real-time Market Data';
+    document.getElementById('drawer-outputs').textContent = meta.outputs || 'Analytical Events & Bias';
 
     const status = state.agentV2Status[agentName] || 'IDLE';
     const statusTag = document.getElementById('drawer-agent-status-tag');
@@ -1014,22 +1084,18 @@ function showAgentDetails(agentName) {
     statusTag.className = `status-pill status-${status.toLowerCase()}`;
 
     // Find last event for decisions
-    const lastEvent = [...state.auditTrail].reverse().find(e => e.agent.includes(agentName));
+    const lastEvent = [...state.auditTrail].reverse().find(e => e.agent === agentName || e.agent.includes(agentName));
 
     if (lastEvent) {
-        document.getElementById('drawer-current-task').textContent = lastEvent.payload.reason || lastEvent.payload.advice || 'Actively monitoring selected market triggers.';
+        document.getElementById('drawer-current-task').textContent = lastEvent.reason || lastEvent.payload?.reason || lastEvent.payload?.advice || 'Actively monitoring selected market triggers.';
 
         // Snapshot
-        const payload = lastEvent.payload;
-        let signal = 'NEUTRAL';
-        if (payload.pattern && payload.pattern !== 'None') signal = payload.pattern;
-        if (payload.market_mood) signal = payload.market_mood;
-        if (payload.entry_allowed !== undefined) signal = payload.entry_allowed ? 'ALLOWED' : 'BLOCKED';
-        if (payload.trade_id) signal = 'EXECUTED';
+        const payload = lastEvent.payload || {};
+        const state = lastEvent.state || 'NEUTRAL';
 
-        document.getElementById('snapshot-signal').textContent = signal;
-        document.getElementById('snapshot-reason').textContent = payload.reason || payload.advice || 'Confluance scan completed.';
-        document.getElementById('snapshot-time').textContent = lastEvent.timestamp.split('T')[1].split('.')[0];
+        document.getElementById('snapshot-signal').textContent = state;
+        document.getElementById('snapshot-reason').textContent = lastEvent.reason || payload.reason || payload.advice || 'Confluence scan completed.';
+        document.getElementById('snapshot-time').textContent = lastEvent.timestamp.includes('T') ? lastEvent.timestamp.split('T')[1].split('.')[0] : lastEvent.timestamp;
     } else {
         document.getElementById('drawer-current-task').textContent = 'Waiting for next market execution cycle.';
         document.getElementById('snapshot-signal').textContent = '--';
@@ -1516,43 +1582,98 @@ let isSwitchingMode = false;
 
 async function confirmModeSwitch(mode) {
     if (isSwitchingMode) {
-        // VISIBLE FEEDBACK requirement
         alert("Mode change unavailable at this time (Operation in progress)");
         return;
     }
 
+    // Safety check for REAL mode
     if (mode === 'REAL') {
         const confirmed = confirm("⚠️ CRITICAL WARNING: You are about to enable REAL TRADING with live capital.\n\nAre you absolutely sure you want to proceed?");
         if (!confirmed) return;
     }
 
     isSwitchingMode = true;
+
+    // Immediate UI feedback for selection
+    const modalGrid = document.querySelector('#mode-layer .mode-grid');
+    if (modalGrid) {
+        modalGrid.querySelectorAll('.mode-option').forEach(opt => opt.classList.remove('selected'));
+        const activeOpt = document.getElementById(`mode-sel-${mode.toLowerCase()}`);
+        if (activeOpt) activeOpt.classList.add('selected');
+    }
+
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
         const res = await fetch('/api/v1/system/mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: mode })
+            body: JSON.stringify({ mode: mode }),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
+        // Check if response is ok
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+            throw new Error(errorData.detail || `Server error: ${res.status}`);
+        }
+
         const data = await res.json();
 
         if (data.status === 'success') {
-            updateExecutionModeUI(data.mode);
+            // Update UI immediately with data status
+            updateExecutionModeUI(data.mode, data.data_status);
             closeModeModal();
+
+            // Log mode change with timestamp
+            console.log(`[MODE SWITCH] ${new Date().toISOString()} - Changed to ${data.mode}`);
+
+            // Show data connection status for Paper/Real modes
+            if (mode === 'PAPER' || mode === 'REAL') {
+                // Check data connection status after a brief delay
+                setTimeout(() => {
+                    const dataStatus = state.market_data && Object.keys(state.market_data).length > 0
+                        ? 'Connected' : 'Connecting...';
+                    console.log(`[DATA STATUS] Market data: ${dataStatus}`);
+                }, 1000);
+            }
+
+            // Refresh system data
             fetchSystemData();
         } else {
-            alert("Failed to switch mode: " + data.detail);
+            // Server returned success:false with a reason
+            const reason = data.detail || data.message || "Unknown error";
+            alert(`Mode switch blocked: ${reason}`);
         }
     } catch (e) {
-        console.error("Mode Switch Error", e);
-        alert("System Error: Could not switch execution mode.");
+        console.error("[MODE SWITCH ERROR]", e);
+
+        // Provide specific error messages
+        let errorMessage = "Could not switch execution mode.";
+
+        if (e.name === 'AbortError') {
+            errorMessage = "Request timed out. Server took too long to respond.";
+        } else if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+            errorMessage = "Connection error: Could not reach the server. Please check if the server is running.";
+        } else if (e.message.includes('JSON')) {
+            errorMessage = "Server response error: Invalid data format received.";
+        } else if (e.message) {
+            errorMessage = `Mode switch error: ${e.message}`;
+        }
+
+        alert(errorMessage);
     } finally {
         isSwitchingMode = false;
     }
 }
 
-function updateExecutionModeUI(mode) {
+function updateExecutionModeUI(mode, dataStatus) {
     const btn = document.getElementById('broker-mode-sidebar');
     const label = document.getElementById('broker-mode-label');
+    const headerMode = document.getElementById('header-execution-mode');
+    const headerData = document.getElementById('header-data-status');
     const simBadge = document.querySelector('.simulation-mode-badge');
 
     if (btn) {
@@ -1563,6 +1684,11 @@ function updateExecutionModeUI(mode) {
     if (label) {
         label.textContent = `${mode} EXECUTION`;
         label.className = 'badge'; // Reset base
+    }
+
+    if (headerMode) {
+        headerMode.textContent = mode;
+        headerMode.className = 'val ' + (mode === 'REAL' ? 'danger-text' : (mode === 'MOCK' ? 'accent-text' : 'warning-text'));
     }
 
     // Modal Option Highlighting
@@ -1577,6 +1703,10 @@ function updateExecutionModeUI(mode) {
         if (btn) btn.classList.add('warning');
         if (label) label.classList.add('warning');
         if (simBadge) simBadge.style.display = 'none';
+        if (headerData) {
+            headerData.textContent = "INTERNAL FEED";
+            headerData.className = "val accent-text";
+        }
     } else if (mode === 'SIMULATION') {
         if (btn) {
             btn.classList.add('active');
@@ -1589,27 +1719,50 @@ function updateExecutionModeUI(mode) {
             simBadge.style.display = 'block';
             simBadge.textContent = "SIMULATION ACTIVE";
         }
-    } else if (mode === 'PAPER') {
-        if (btn) {
-            btn.classList.add('warning');
-            btn.textContent = "PAPER TRADING";
-            btn.style.background = 'rgba(255, 193, 7, 0.1)';
-            btn.style.color = 'var(--warning)';
-            btn.style.border = '1px solid var(--warning)';
+        if (headerData) {
+            headerData.textContent = "HISTORICAL REPLAY";
+            headerData.className = "val warning-text";
         }
-        if (label) label.classList.add('warning');
-        if (simBadge) simBadge.style.display = 'none';
-    } else if (mode === 'REAL') {
+    } else if (mode === 'PAPER' || mode === 'REAL') {
+        const isReal = mode === 'REAL';
         if (btn) {
-            btn.classList.add('danger');
-            btn.textContent = "🔴 LIVE TRADING";
-            btn.style.background = 'rgba(255, 62, 62, 0.1)';
-            btn.style.color = 'var(--danger)';
-            btn.style.border = '1px solid var(--danger)';
-            btn.classList.add('pulse-animation');
+            btn.className = 'status-badge ' + (isReal ? 'danger pulse-animation' : 'warning');
+            btn.textContent = isReal ? "🔴 LIVE TRADING" : "PAPER TRADING";
+            if (isReal) {
+                btn.style.background = 'rgba(255, 62, 62, 0.1)';
+                btn.style.color = 'var(--danger)';
+                btn.style.border = '1px solid var(--danger)';
+            } else {
+                btn.style.background = 'rgba(255, 193, 7, 0.1)';
+                btn.style.color = 'var(--warning)';
+                btn.style.border = '1px solid var(--warning)';
+            }
         }
-        if (label) label.className = 'badge success'; // Override to show SUCCESS context
-        if (simBadge) simBadge.style.display = 'none';
+        if (label) label.className = 'badge ' + (isReal ? 'success' : 'warning');
+        if (simBadge) {
+            simBadge.style.display = 'block';
+            simBadge.textContent = isReal ? "⚠️ LIVE TRADING ACTIVE ⚠️" : "PAPER MODE - VIRTUAL EXECUTION";
+            simBadge.style.background = isReal ? 'linear-gradient(135deg, #FF2D55 0%, #DC143C 100%)' : 'linear-gradient(135deg, #FFB800 0%, #FF8C00 100%)';
+        }
+        if (headerData) {
+            if (dataStatus) {
+                headerData.textContent = dataStatus;
+                headerData.className = "val " + (dataStatus === 'CONNECTED' ? 'success-text' : (dataStatus === 'CONNECTING' ? 'warning-text' : 'danger-text'));
+            } else {
+                headerData.textContent = "LIVE DATA";
+                headerData.className = "val success-text";
+            }
+        }
+    }
+
+    // Update state for reference
+    if (state.metrics) {
+        state.metrics.execution_mode = mode;
+    }
+
+    // Log data status if provided
+    if (dataStatus) {
+        console.log(`[DATA CONNECTION] ${dataStatus}`);
     }
 }
 
@@ -1620,3 +1773,141 @@ window.addEventListener('load', () => {
         dropdown.value = state.selectedMarket;
     }
 });
+
+// --- UNIVERSAL SYMBOL SEARCH ---
+let searchDebounce = null;
+let searchSelectedIdx = -1;
+
+function initSymbolSearch() {
+    const searchInput = document.getElementById('symbol-search-input');
+    const resultsDropdown = document.getElementById('search-results-dropdown');
+    const loadingSpinner = document.getElementById('search-loading-spinner');
+
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        clearTimeout(searchDebounce);
+
+        if (query.length < 2) {
+            resultsDropdown.classList.add('hidden');
+            return;
+        }
+
+        searchDebounce = setTimeout(async () => {
+            if (loadingSpinner) loadingSpinner.classList.remove('hidden');
+            try {
+                const res = await fetch(`/api/v1/market/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    renderSearchResults(data.results);
+                }
+            } catch (err) {
+                console.error("Search failed:", err);
+            } finally {
+                if (loadingSpinner) loadingSpinner.classList.add('hidden');
+            }
+        }, 300);
+    });
+
+    // Close dropdown on click outside
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !resultsDropdown.contains(e.target)) {
+            resultsDropdown.classList.add('hidden');
+        }
+    });
+
+    // Keyboard navigation
+    searchInput.addEventListener('keydown', (e) => {
+        if (resultsDropdown.classList.contains('hidden')) return;
+
+        const items = resultsDropdown.querySelectorAll('.search-result-item');
+        if (e.key === 'ArrowDown') {
+            searchSelectedIdx = (searchSelectedIdx + 1) % items.length;
+            updateSearchSelection(items);
+            e.preventDefault();
+        } else if (e.key === 'ArrowUp') {
+            searchSelectedIdx = (searchSelectedIdx - 1 + items.length) % items.length;
+            updateSearchSelection(items);
+            e.preventDefault();
+        } else if (e.key === 'Enter' && searchSelectedIdx > -1) {
+            items[searchSelectedIdx].click();
+            e.preventDefault();
+        }
+    });
+}
+
+function renderSearchResults(results) {
+    const dropdown = document.getElementById('search-results-dropdown');
+    if (!dropdown) return;
+
+    if (results.length === 0) {
+        dropdown.innerHTML = '<div style="padding: 12px; color: var(--text-dim); font-size: 0.8rem;">No results found</div>';
+    } else {
+        dropdown.innerHTML = results.map((item, idx) => `
+            <div class="search-result-item" onclick="handleSymbolSelection('${item.symbol}', '${item.exch}')">
+                <div class="result-main">
+                    <span class="result-symbol">${item.symbol}</span>
+                    <span class="result-name">${item.name}</span>
+                </div>
+                <div class="result-meta">
+                    <span class="type-badge">${item.type || 'EQ'}</span>
+                    <span class="exch-badge ${item.exch ? item.exch.toLowerCase() : 'nse'}">${item.exch || 'NSE'}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    dropdown.classList.remove('hidden');
+    searchSelectedIdx = -1;
+}
+
+function updateSearchSelection(items) {
+    items.forEach((item, idx) => {
+        if (idx === searchSelectedIdx) {
+            item.classList.add('selected');
+            item.scrollIntoView({ block: 'nearest' });
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+async function handleSymbolSelection(symbol, exchange) {
+    console.log(`Selecting symbol: ${symbol} (${exchange})`);
+
+    // UI Update immediate
+    const searchInput = document.getElementById('symbol-search-input');
+    const dropdown = document.getElementById('search-results-dropdown');
+    if (searchInput) searchInput.value = symbol;
+    if (dropdown) dropdown.classList.add('hidden');
+
+    try {
+        const res = await fetch('/api/v1/market/select', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, exchange })
+        });
+
+        const data = await res.json();
+        if (data.status === 'success') {
+            state.selectedMarket = symbol;
+
+            // Remove active class from hardcoded tabs
+            document.querySelectorAll('.market-tab').forEach(t => t.classList.remove('active'));
+
+            // Toggle Commodity selector
+            const commWrapper = document.getElementById('commodity-selector-wrapper');
+            if (commWrapper) commWrapper.classList.add('hidden');
+
+            // Re-sync and update
+            updateMarketHeader();
+            updateDetectedPatterns(symbol);
+
+            console.log(`Successfully switched to ${symbol}`);
+        }
+    } catch (err) {
+        console.error("Selection failed:", err);
+    }
+}

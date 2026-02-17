@@ -61,37 +61,68 @@ class GuidanceAgent:
             return f"Strategic Link Interrupted: {err_msg}"
 
     def generate_advice(self, last_events):
-        # Default Logic
-        basic_advice = "System is scanning for high-probability setups."
+        # 1. Analyze Reasoning Hierarchy
+        weakest_confidence = 100
+        primary_reason = "System is scanning for high-probability setups."
+        decision = "NEUTRAL"
+        conflicting_factors = []
         
-        for e in reversed(last_events):
-            if e['agent'] == 'RiskAgent' and e['payload'].get('allowed') == False:
-                basic_advice = f"🚨 ADVICE: Trade blocked because {e['payload'].get('reason')}. This protects your remaining capital."
-                break
-            if e['agent'] == 'ValidationAgent' and e['payload'].get('entry_allowed') == False:
-                basic_advice = f"ℹ️ ADVICE: Entry rejected! {e['payload'].get('reason')} Wait for higher-confidence confluence."
-                break
-            if e['agent'] == 'ExecutionAgent':
-                basic_advice = f"🎯 ADVICE: Trade executed! Monitoring SL/TP targets based on structural volatility."
-                break
+        # Agents we care about in the chain
+        relevant_agents = ["MarketContextAgent", "StructurePatternAgent", "ValidationAgent", "RiskAgent"]
+        contributing_events = [e for e in last_events if e['agent'] in relevant_agents]
+        
+        if contributing_events:
+            # Sort by timestamp to get latest context
+            contributing_events.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            # Find the weakest link
+            for e in contributing_events:
+                conf = e.get('confidence', 0)
+                if conf < weakest_confidence and conf > 0:
+                    weakest_confidence = conf
+                
+                # Check for rejections/filters
+                if e.get('state') in ['REJECTED', 'FILTERED'] or e.get('payload', {}).get('allowed') == False:
+                    decision = "REJECTED"
+                    primary_reason = e.get('reason', "Filtered by logic engine.")
+                    if e['agent'] not in conflicting_factors:
+                        conflicting_factors.append(e['agent'])
 
-        # If GPT is enabled, we could potentially enrich this, 
-        # but for the "automatic" mode we'll stick to basic to save tokens.
-        # User explicitly asked to respond when clicked.
+            # If none rejected, check if approved
+            if decision != "REJECTED":
+                validation = next((e for e in contributing_events if e['agent'] == 'ValidationAgent'), None)
+                if validation and validation.get('state') == 'APPROVED':
+                    decision = "APPROVED"
+                    primary_reason = validation.get('reason', "Confluence detected.")
+                
+        # 2. Finalize Advice
+        summary = f"Decision: {decision} | {primary_reason}"
+        if conflicting_factors:
+            summary += f" (Conflicts: {', '.join(conflicting_factors)})"
+        
+        # Confidence Calibration Rules
+        final_confidence = min(weakest_confidence, 95)
+        if decision == "NEUTRAL":
+            final_confidence = min(final_confidence, 60)
 
-        payload = {
-            "advice": basic_advice,
-            "style": "ChatGPT-Guide"
+        context = {
+            "decision": decision,
+            "primary_reason": primary_reason,
+            "conflicting_factors": conflicting_factors,
+            "reasoning_hierarchy": "MarketContext -> Structure -> Validation -> Risk"
         }
         
         event = AgentEvent(
             symbol="GLOBAL",
             agent_name="GuidanceAgent",
-            payload=payload,
-            confidence=1.0
+            state=decision,
+            reason=summary,
+            context=context,
+            confidence=final_confidence,
+            payload={"advice": summary}
         )
         self.manager.emit_event(event)
-        return basic_advice
+        return summary
 
     def get_on_demand_advice(self, context_summary):
         prompt = f"Analyze this current trading state and provide a 2-sentence institutional advice: {context_summary}"
@@ -105,8 +136,15 @@ class GuidanceAgent:
         event = AgentEvent(
             symbol="GLOBAL",
             agent_name="GuidanceAgent",
-            payload=payload,
-            confidence=1.0
+            state="APPROVED",
+            reason=gpt_advice,
+            context={
+                "decision": "ON_DEMAND_INSIGHT",
+                "source": "GPT-CORE",
+                "reasoning_hierarchy": "Ad-Hoc Analysis"
+            },
+            confidence=90,
+            payload={"advice": gpt_advice, "style": "ChatGPT-Premium"}
         )
         self.manager.emit_event(event)
         return gpt_advice

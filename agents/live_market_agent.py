@@ -14,6 +14,14 @@ except Exception:
     except Exception:
         LiveFeedType = None
 
+try:
+    import pya3.alicebluepy
+    from datetime import time as dt_time
+    if hasattr(pya3.alicebluepy, 'time') and not callable(pya3.alicebluepy.time):
+        pya3.alicebluepy.time = dt_time
+except Exception:
+    pass
+
 from shared.data_bus import DataBus
 
 # Global state
@@ -21,29 +29,35 @@ from shared.data_bus import DataBus
 data_bus = DataBus()  # singleton for ticks
 tick_count = 0
 is_connected = False
+callbacks = []  # List of functions to call on new tick
+
+def register_callback(func):
+    """Register a function to be called on every tick"""
+    if func not in callbacks:
+        callbacks.append(func)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 # CALLBACKS
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 
 def socket_open():
     """Called when WebSocket connects"""
     global is_connected
     is_connected = True
-    print("✅ WebSocket Connected")
+    print("[OK] WebSocket Connected")
 
 
 def socket_close():
     """Called when WebSocket disconnects"""
     global is_connected
     is_connected = False
-    print("❌ WebSocket Closed")
+    print("[CLOSE] WebSocket Closed")
 
 
 def socket_error(error):
     """Called on WebSocket error"""
-    print(f"⚠️  WebSocket Error: {error}")
+    print(f"[WARN] WebSocket Error: {error}")
 
 
 def feed_data(message):
@@ -53,10 +67,21 @@ def feed_data(message):
     """
     global tick_count
     
+    if isinstance(message, str):
+        try:
+            import json
+            message = json.loads(message)
+        except Exception:
+            pass
+
     if not isinstance(message, dict):
+        if message: print(f"[DEBUG] NON-DICT MSG: {message} (type: {type(message)})")
         return
     
     tick_count += 1
+    # Debug: print every incoming message for the first 10 messages
+    if tick_count <= 10:
+        print(f"DEBUG MSG #{tick_count}: {message}")
     
     # Extract key fields
     try:
@@ -80,21 +105,27 @@ def feed_data(message):
         except Exception:
             # Fallback to item assignment if update_data is unavailable
             data_bus[symbol] = {"price": price, "volume": volume, "raw": message}
-        
-        # Debug: print the raw first few ticks to inspect structure
-        if tick_count <= 3:
-            print("🔍 RAW TICK:", message)
 
-        if tick_count % 10 == 0:  # Log every 10th tick to reduce output
-            print(f"📥 TICK #{tick_count}: {symbol} @ {price:.2f} (stored in DataBus)")
+        if tick_count <= 3:
+            print("DEBUG RAW TICK:", message)
+
+        if tick_count % 10 == 0:
+            print(f"TICK #{tick_count}: {symbol} @ {price:.2f}")
+        
+        # Execute registered callbacks
+        for callback in callbacks:
+            try:
+                callback(message)
+            except Exception as cb_err:
+                print(f"[WARN] Callback error: {cb_err}")
         
     except Exception as e:
-        print(f"⚠️  Tick parsing error: {e}")
+        print(f"[WARN] Tick parsing error: {e}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 # MAIN FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════════════
+# -------------------------------------------------------------------------------
 
 def start_market_feed(alice, symbols_to_subscribe=None):
     """
@@ -114,12 +145,12 @@ def start_market_feed(alice, symbols_to_subscribe=None):
     is_market_open = market_open <= ist_now <= market_close and ist_now.weekday() < 5
 
     if not is_market_open:
-        print(f"⚠️  WARNING: Market is CLOSED (IST: {ist_now.strftime('%H:%M:%S')})")
+        print(f"[WARN] Market is CLOSED (IST: {ist_now.strftime('%H:%M:%S')})")
         print("   Live data only available 09:15 - 15:30 IST (Mon-Fri)")
     else:
-        print(f"✅ Market is OPEN (IST: {ist_now.strftime('%H:%M:%S')})")
+        print(f"[OK] Market is OPEN (IST: {ist_now.strftime('%H:%M:%S')})")
 
-    print("🚀 Starting WebSocket...")
+    print("[START] Starting WebSocket...")
     
     # DEBUG: Print session information and try explicit session creation to catch server responses
     try:
@@ -165,7 +196,7 @@ def start_market_feed(alice, symbols_to_subscribe=None):
     time.sleep(2)
     
     if not is_connected:
-        print("⚠️  WebSocket may not be connected yet")
+        print("[WARN] WebSocket may not be connected yet")
     
     # Step 3: Subscribe to symbols if provided
     if symbols_to_subscribe:
@@ -179,10 +210,10 @@ def start_market_feed(alice, symbols_to_subscribe=None):
                 # Prefer token lookup (more reliable); fall back to symbol lookup
                 if token:
                     instrument = alice.get_instrument_by_token(exchange, token)
-                    print(f"🔍 DEBUG: Got instrument by token {token}: {instrument}")
+                    print(f"DEBUG: Got instrument by token {token}: {instrument}")
                 elif symbol:
                     instrument = alice.get_instrument_by_symbol(exchange, symbol)
-                    print(f"🔍 DEBUG: Got instrument by symbol {symbol}: {instrument}")
+                    print(f"DEBUG: Got instrument by symbol {symbol}: {instrument}")
                 else:
                     raise ValueError("No token or symbol provided for subscription")
 
@@ -190,16 +221,19 @@ def start_market_feed(alice, symbols_to_subscribe=None):
                 is_index = (symbol and symbol.startswith("^")) or ("NIFTY" in name.upper()) or ("SENSEX" in name.upper())
                 feed_type = None
                 if LiveFeedType:
-                    if is_index:
-                        for idx_attr in ("INDEX", "MARKET_INDEX", "INDEX_DATA"):
-                            if hasattr(LiveFeedType, idx_attr):
-                                feed_type = getattr(LiveFeedType, idx_attr)
-                                break
-                        else:
-                            feed_type = getattr(LiveFeedType, "MARKET_DATA", None)
-                            print("⚠️  LiveFeedType lacks INDEX attribute; falling back to MARKET_DATA")
-                    else:
-                        feed_type = getattr(LiveFeedType, "MARKET_DATA", None)
+                    # Try to find a suitable feed type
+                    priority = ["TICK_DATA", "MARKET_DATA", "INDEX", "MARKET_INDEX"] if is_index else ["TICK_DATA", "MARKET_DATA", "DEPTH_DATA"]
+                    for attr in priority:
+                        if hasattr(LiveFeedType, attr):
+                            feed_type = getattr(LiveFeedType, attr)
+                            break
+                    
+                    if not feed_type:
+                        # Fallback to first available member if possible
+                        members = [m for m in dir(LiveFeedType) if not m.startswith('_')]
+                        if members:
+                            feed_type = getattr(LiveFeedType, members[0])
+                            print(f"[WARN] Using fallback feed_type: {members[0]}")
 
                 # Debug: print available LiveFeedType members and subscribe signature
                 try:
@@ -217,24 +251,24 @@ def start_market_feed(alice, symbols_to_subscribe=None):
                     # Preferred modern API: list of instruments
                     alice.subscribe([instrument])
                     subscribed = True
-                    print("🔁 subscribe([instrument]) succeeded")
+                    print("INFO: subscribe([instrument]) succeeded")
                 except TypeError as e1:
                     try:
                         # Older API: single instrument
                         alice.subscribe(instrument)
                         subscribed = True
-                        print("🔁 subscribe(instrument) succeeded")
+                        print("INFO: subscribe(instrument) succeeded")
                     except TypeError as e2:
                         # If we have a feed_type try as keyword argument (some SDKs support this)
                         if feed_type is not None:
                             try:
                                 alice.subscribe([instrument], feed_type=feed_type)
                                 subscribed = True
-                                print("🔁 subscribe([instrument], feed_type=...) succeeded")
+                                print("INFO: subscribe([instrument], feed_type=...) succeeded")
                             except Exception as e3:
-                                print(f"⚠️  Subscription call failed: {e1!r}, {e2!r}, {e3!r}")
+                                print(f"[WARN] Subscription call failed: {e1!r}, {e2!r}, {e3!r}")
                         else:
-                            print(f"⚠️  Subscription call failed: {e1!r}, {e2!r}")
+                            print(f"[WARN] Subscription call failed: {e1!r}, {e2!r}")
 
                 if subscribed:
                     # Try printing subscribed instruments if supported by the client
@@ -242,11 +276,11 @@ def start_market_feed(alice, symbols_to_subscribe=None):
                         getter = getattr(alice, "get_subscribed_instruments", None) or getattr(alice, "get_subscribed", None)
                         if callable(getter):
                             try:
-                                print("ℹ️  Subscribed instruments:", getter())
+                                print("INFO: Subscribed instruments:", getter())
                             except Exception:
-                                print("ℹ️  Subscribed instruments (could not retrieve list)")
+                                print("INFO: Subscribed instruments (could not retrieve list)")
                     except Exception as _e:
-                        print(f"⚠️  Could not get subscribed instruments: {_e!r}")
+                        print(f"[WARN] Could not get subscribed instruments: {_e!r}")
 
                 if subscribed:
                     # Try printing subscribed instruments if supported by the client
@@ -254,20 +288,20 @@ def start_market_feed(alice, symbols_to_subscribe=None):
                         getter = getattr(alice, "get_subscribed_instruments", None) or getattr(alice, "get_subscribed", None)
                         if callable(getter):
                             try:
-                                print("ℹ️  Subscribed instruments:", getter())
+                                print("INFO: Subscribed instruments:", getter())
                             except Exception:
-                                print("ℹ️  Subscribed instruments (could not retrieve list)")
+                                print("INFO: Subscribed instruments (could not retrieve list)")
                     except Exception as _e:
-                        print(f"⚠️  Could not get subscribed instruments: {_e!r}")
+                        print(f"[WARN] Could not get subscribed instruments: {_e!r}")
 
-                print(f"📊 Subscribed to {name} ({exchange}, {token or symbol})")
+                print(f"STATUS: Subscribed to {name} ({exchange}, {token or symbol})")
             except Exception as e:
                 # Print detailed subscription error for debugging
                 import traceback
-                print(f"⚠️  Subscription warning for {name}: {e!r}")
+                print(f"[WARN] Subscription warning for {name}: {e!r}")
                 traceback.print_exc()
     else:
-        print("📊 WebSocket active - ready for subscriptions")
+        print("STATUS: WebSocket active - ready for subscriptions")
 
 
 def get_market_data(symbol=None):
@@ -290,8 +324,8 @@ def is_websocket_connected():
 def analyze_market():
     all_data = data_bus.get_all_data()
     if not all_data:
-        print("⏳ Waiting for live tick...")
-        print(f"🔍 DEBUG: DataBus contents: {data_bus.get_all_data()}")
+        print("WAIT: Waiting for live tick...")
+        print(f"DEBUG: DataBus contents: {data_bus.get_all_data()}")
         return None
 
     # Pop the first available symbol's data for analysis
@@ -299,3 +333,30 @@ def analyze_market():
     data_bus.delete_data(symbol)
     print("📈 Analyzing:", {symbol: data})
     return {symbol: data}
+
+
+def stop_market_feed(alice_client=None):
+    """
+    Stop the market feed and reset state.
+    
+    Args:
+        alice_client: Optional Alice Blue client instance to try stopping websocket on
+    """
+    global is_connected
+    
+    print("🛑 Stopping Market Feed...")
+    
+    if alice_client:
+        try:
+            # Try to stop websocket on the client if available
+            stopper = getattr(alice_client, "stop_websocket", None) or getattr(alice_client, "close_websocket", None)
+            if callable(stopper):
+                stopper()
+                print("✅ WebSocket stopped via client method")
+        except Exception as e:
+            print(f"⚠️  Error stopping websocket: {e}")
+
+    # Force disconnect flag
+    is_connected = False
+    callbacks.clear()  # Remove registered callbacks to prevents duplicates on restart
+    print("[STOP] Market Feed disconnected")

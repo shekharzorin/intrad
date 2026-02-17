@@ -5,20 +5,26 @@ import threading
 import time
 
 class AgentEvent:
-    def __init__(self, symbol, agent_name, payload, confidence=1.0):
+    def __init__(self, symbol, agent_name, state, reason, context, confidence, payload=None):
         self.symbol = symbol
         self.timestamp = datetime.datetime.now().isoformat()
         self.agent = agent_name
-        self.payload = payload
-        self.confidence = confidence
+        self.state = state  # APPROVED | FILTERED | NEUTRAL | REJECTED
+        self.reason = reason
+        self.context = context  # trend, volatility, pattern, risk_condition
+        self.confidence = confidence # 0-100
+        self.payload = payload or {}
 
     def to_dict(self):
         return {
             "agent": self.agent,
             "symbol": self.symbol,
             "timestamp": self.timestamp,
-            "payload": self.payload,
-            "confidence": self.confidence
+            "state": self.state,
+            "reason": self.reason,
+            "context": self.context,
+            "confidence": self.confidence,
+            "payload": self.payload
         }
 
 class AgentManager:
@@ -30,7 +36,7 @@ class AgentManager:
 
     def register_agent(self, name, agent_instance):
         self.agents[name] = agent_instance
-        print(f"🤖 Agent Registered: {name}")
+        print(f"[AGENT] Registered: {name}")
 
     def emit_event(self, event):
         with self.lock:

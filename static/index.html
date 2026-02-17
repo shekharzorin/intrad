@@ -181,16 +181,17 @@
                             <button class="market-tab" data-market="SENSEX">SENSEX</button>
                             <button class="market-tab" data-market="COMMODITY">COMMODITY</button>
                         </div>
-                        <!-- COMMODITY SELECTOR DROPDOWN -->
-                        <div id="commodity-selector-wrapper" class="hidden"
-                            style="margin-left: 12px; display: flex; align-items: center;">
-                            <select id="commodity-selector" class="logic-input"
-                                style="height: 38px; border-color: var(--primary); background: var(--bg-card); color: var(--text-main); font-weight: 600;">
-                                <option value="GOLD">GOLD</option>
-                                <option value="SILVER">SILVER</option>
-                                <option value="CRUDEOIL">CRUDE OIL</option>
-                                <option value="NATGASMINI">NATURAL GAS</option>
-                            </select>
+                        <!-- UNIVERSAL SEARCH BAR -->
+                        <div class="universal-search-wrapper">
+                            <div class="search-input-group">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="symbol-search-input"
+                                    placeholder="Search Symbol (e.g. RELIANCE)..." autocomplete="off">
+                                <div id="search-loading-spinner" class="spinner-tiny hidden"></div>
+                            </div>
+                            <div id="search-results-dropdown" class="search-results-dropdown hidden">
+                                <!-- Results will be injected here -->
+                            </div>
                         </div>
                     </div>
 
@@ -228,8 +229,18 @@
                             <span class="label">EXPOSURE</span>
                             <span class="val" id="sys-exposure-summary">₹0</span>
                         </div>
+                        <div class="metric-item" style="border-left: 1px solid var(--border); padding-left: 24px;">
+                            <span class="label">EXECUTION MODE</span>
+                            <span class="val accent-text" id="header-execution-mode">MOCK</span>
+                        </div>
+                        <div class="metric-item" id="header-data-container"
+                            style="border-left: 1px solid var(--border); padding-left: 24px;">
+                            <span class="label">MARKET DATA</span>
+                            <span class="val warning-text" id="header-data-status">LOCAL FEED</span>
+                        </div>
                         <div id="dynamic-price-container" style="display: flex; gap: 24px; align-items: center;">
-                            <div class="metric-item price-box">
+                            <div class="metric-item price-box"
+                                style="border-left: 1px solid var(--border); padding-left: 24px;">
                                 <span class="label" id="mkt-symbol-label">NIFTY</span>
                                 <span class="val huge" id="mkt-ltp">0.00</span>
                                 <span class="change success-text" id="mkt-chg">+0.00%</span>
@@ -841,6 +852,20 @@
         <div class="task-box">
             <h5>Current Task</h5>
             <p id="drawer-current-task">Scanning market data for structural breaks...</p>
+        </div>
+
+        <div class="telemetry-box" style="margin-top: 16px;">
+            <h5>Agent Telemetry</h5>
+            <div class="snapshot-row" style="margin-bottom: 8px;">
+                <span class="lbl">Inputs</span>
+                <span class="val" id="drawer-inputs" style="font-size: 0.75rem; color: var(--text-dim);">Scanning
+                    OHLC...</span>
+            </div>
+            <div class="snapshot-row">
+                <span class="lbl">Outputs</span>
+                <span class="val" id="drawer-outputs" style="font-size: 0.75rem; color: var(--text-dim);">Generating
+                    signals...</span>
+            </div>
         </div>
 
         <div class="decision-snapshot">

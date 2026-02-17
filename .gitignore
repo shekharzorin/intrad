@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets
+.env
+
+# Logs
+*.log
+run_log.txt
+EXECUTION_LOG.txt
+
+# Data files (optional)
+*.csv
+
+# IDE
+.vscode/
+.DS_Store

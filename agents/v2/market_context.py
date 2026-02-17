@@ -10,35 +10,52 @@ class MarketContextAgent:
         return self.status
 
     def process(self, symbol, ltp, close, volume=0, vwap=0):
-        # Professional AI evaluation logic
-        # In a real CrewAI setup, this would use a LLM or advanced stats.
-        # Here we mimic the logic with price action context.
+        # 1. Trend Analysis
+        diff_pct = (ltp - close) / close if close > 0 else 0
+        trend = "Sideways"
+        state = "NEUTRAL"
+        confidence = 55  # Base confidence for neutral
         
-        mood = "Range"
-        confidence = 0.5
-        reason = "Market is in a neutral consolidation phase."
+        if diff_pct > 0.002:
+            trend = "Bullish"
+            state = "APPROVED"
+            confidence = 82
+        elif diff_pct < -0.002:
+            trend = "Bearish"
+            state = "APPROVED"
+            confidence = 82
+        
+        # 2. Volatility Analysis (Simulated regime)
+        volatility = "Low"
+        if abs(diff_pct) > 0.01:
+            volatility = "High"
+        elif abs(diff_pct) > 0.005:
+            volatility = "Moderate"
 
-        if ltp > close * 1.002:
-            mood = "Bullish"
-            confidence = 0.82
-            reason = "Higher price levels sustained above yesterday's close with positive momentum."
-        elif ltp < close * 0.998:
-            mood = "Bearish"
-            confidence = 0.82
-            reason = "Price action showing weakness and trading below key psychological levels."
+        # 3. Liquidity & Session (Contextual metadata)
+        liquidity = "High" if volume > 1000 or volume == 0 else "Moderate"
+        session_bias = "Neutral"
         
-        payload = {
-            "symbol": symbol,
-            "market_mood": mood,
-            "confidence": confidence,
-            "reason": reason
+        reason = f"Market is in a {trend.lower()} phase with {volatility.lower()} volatility."
+        if state == "NEUTRAL":
+            reason = "Market is in a neutral consolidation phase. Awaiting volatility expansion."
+            confidence = min(confidence, 60)
+
+        context = {
+            "trend": trend,
+            "volatility": volatility,
+            "liquidity": liquidity,
+            "session_bias": session_bias
         }
         
         event = AgentEvent(
             symbol=symbol,
             agent_name="MarketContextAgent",
-            payload=payload,
-            confidence=confidence
+            state=state,
+            reason=reason,
+            context=context,
+            confidence=confidence,
+            payload={"ltp": ltp, "close": close}
         )
         self.manager.emit_event(event)
-        return mood
+        return event.to_dict()

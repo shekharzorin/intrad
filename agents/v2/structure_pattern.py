@@ -10,32 +10,42 @@ class StructurePatternAgent:
         return self.status
 
     def process(self, symbol, ltp):
-        # Detect technical events (Simulated)
-        # We'll trigger a 'BOS' or 'None' based on price volatility
-        
+        # 1. Technical Pattern Detection (Simulated)
         pattern = "None"
-        price_level = round(ltp, 2)
-        valid = False
+        state = "NEUTRAL"
+        confidence = 0
+        reason = "Scanning for structural developments."
         
-        if ltp % 10 < 1: # Random-ish trigger for demo
+        # Trigger 'BOS' or 'CHoCH' based on micro-fluctuations for demonstration
+        if ltp % 10 < 1:
             pattern = "BOS"
-            valid = True
+            state = "APPROVED"
+            confidence = 78
+            reason = f"Break of Structure (BOS) detected at {round(ltp, 2)}. Shift in supply/demand confirmed."
         elif ltp % 10 > 9:
             pattern = "CHoCH"
-            valid = True
+            state = "APPROVED"
+            confidence = 75
+            reason = f"Change of Character (CHoCH) at {round(ltp, 2)}. Counter-trend transition potential identified."
+        else:
+            reason = "No significant structural patterns detected in current price window."
 
-        payload = {
-            "symbol": symbol,
+        # 2. Contextual Metadata
+        context = {
             "pattern": pattern,
-            "price_level": price_level,
-            "valid": valid
+            "price_level": round(ltp, 2),
+            "structural_validity": True if pattern != "None" else False,
+            "liquidity_zone": "Untested"
         }
         
         event = AgentEvent(
             symbol=symbol,
             agent_name="StructurePatternAgent",
-            payload=payload,
-            confidence=0.75 if valid else 0.0
+            state=state,
+            reason=reason,
+            context=context,
+            confidence=confidence,
+            payload={"ltp": ltp}
         )
         self.manager.emit_event(event)
-        return pattern if valid else None
+        return event.to_dict()

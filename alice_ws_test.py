@@ -73,9 +73,18 @@ def socket_open():
             LiveFeedType = None
 
     if LiveFeedType:
-        alice.subscribe(nifty, LiveFeedType.MARKET_DATA)
+        try:
+            alice.subscribe(nifty, LiveFeedType.MARKET_DATA)
+        except TypeError:
+            try:
+                alice.subscribe(nifty)
+            except Exception as e:
+                print(f"⚠️ Subscription failed: {e}")
     else:
-        alice.subscribe(nifty)
+        try:
+            alice.subscribe(nifty)
+        except Exception as e:
+            print(f"⚠️ Subscription failed: {e}")
     print("📊 Subscribed to NIFTY 50")
 
 def socket_close():
@@ -91,9 +100,13 @@ def socket_error(message):
 def feed_data(message):
     """Called for each live tick"""
     global tick_count
+    if not isinstance(message, dict):
+        # Ignore non-dictionary messages (control packets, strings)
+        return
+
     tick_count += 1
     
-    symbol = message.get("ts", "UNKNOWN")
+    symbol = message.get("ts", "NIFTY50") # Fallback to NIFTY50 for test
     price = message.get("lp", 0)
     volume = message.get("v", 0)
     

@@ -30,6 +30,7 @@ data_bus = DataBus()  # singleton for ticks
 tick_count = 0
 is_connected = False
 callbacks = []  # List of functions to call on new tick
+token_name_map = {} # Maps token strings to user-friendly names
 
 def register_callback(func):
     """Register a function to be called on every tick"""
@@ -79,25 +80,38 @@ def feed_data(message):
         return
     
     tick_count += 1
-    # Debug: print every incoming message for the first 10 messages
-    if tick_count <= 10:
-        print(f"DEBUG MSG #{tick_count}: {message}")
     
     # Extract key fields
     try:
-        symbol = message.get("ts", "UNKNOWN")
-        price = message.get("lp", 0)
-        volume = message.get("v", 0)
+        token = str(message.get("tk", ""))
+        symbol = message.get("ts")
+        
+        # Fallback to token if symbol name is missing (common in indices)
+        if not symbol:
+            symbol = token_name_map.get(token, token)
+            if not symbol or symbol == "":
+                symbol = "UNKNOWN"
+        
+        # Debug: print every incoming message for the first 10 messages
+        if tick_count <= 10:
+            print(f"DEBUG MSG #{tick_count}: {message} -> Resolved Symbol: {symbol}")
+        
+        # Get existing data for fallback
+        existing = data_bus.get_data(symbol) or {}
+        
+        price = message.get("lp", existing.get("price", 0))
+        volume = message.get("v", existing.get("volume", 0))
         
         # Normalize numeric types to avoid formatting errors
         try:
             price = float(price)
         except Exception:
-            price = 0.0
+            price = existing.get("price", 0.0)
         try:
             volume = int(volume)
         except Exception:
-            volume = 0
+            volume = existing.get("volume", 0)
+
         
         # Store in the singleton DataBus (keyed by symbol)
         try:
@@ -216,6 +230,12 @@ def start_market_feed(alice, symbols_to_subscribe=None):
                     print(f"DEBUG: Got instrument by symbol {symbol}: {instrument}")
                 else:
                     raise ValueError("No token or symbol provided for subscription")
+
+                # Store mapping for tick resolver
+                if token:
+                    token_name_map[str(token)] = name
+                elif instrument and hasattr(instrument, 'token'):
+                    token_name_map[str(instrument.token)] = name
 
                 # Subscribe to the instrument with robust signature handling
                 is_index = (symbol and symbol.startswith("^")) or ("NIFTY" in name.upper()) or ("SENSEX" in name.upper())

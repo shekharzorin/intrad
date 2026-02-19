@@ -51,12 +51,12 @@ class LiveDataManager:
             self.callbacks.append(func)
 
     async def start(self, symbols: List[Dict[str, Any]]):
-        """Connect and subscribe"""
+        """Initialize and start the data engine"""
+        if self.status in ["CONNECTING", "CONNECTED"]:
+            print("[LDM] Already active or connecting.")
+            return True # Indicate that it's already in the desired state
+            
         async with self.lock:
-            if self.status in ["CONNECTED", "CONNECTING"]:
-                print("[LDM] Already active or connecting.")
-                return
-
             self.status = "CONNECTING"
             self.subscriptions = symbols
             
@@ -230,3 +230,15 @@ class LiveDataManager:
         if symbol:
             return self.market_cache.get(symbol)
         return self.market_cache
+
+    async def stop(self):
+        """Stop everything safely"""
+        async with self.lock:
+            self.status = "DISCONNECTED"
+        
+        if self.adapter:
+            await self.adapter.unsubscribe(self.subscriptions)
+            if hasattr(self.adapter, 'disconnect'):
+                await self.adapter.disconnect()
+        
+        print("[LDM] Data engine stopped.")

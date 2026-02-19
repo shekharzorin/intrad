@@ -184,3 +184,15 @@ class AliceBlueAdapter(BrokerDataAdapter):
     async def unsubscribe(self, symbols: List[Dict[str, Any]]):
         # pya3 doesn't have a direct unsubscribe for all, but we can try
         pass
+
+    async def disconnect(self):
+        """Cleanly close connection"""
+        if self.alice:
+            try:
+                stopper = getattr(self.alice, "stop_websocket", None) or getattr(self.alice, "close_websocket", None)
+                if callable(stopper):
+                    stopper()
+                self.alice = None
+                print("[ADAPTER] WebSocket disconnected.")
+            except:
+                pass

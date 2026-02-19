@@ -25,8 +25,7 @@ def start_live_feed(alice):
     while True:
         current_data = data_bus.get_all_data()
         tick_count = len(current_data)
-        # Detailed heartbeat to show we rely on data_bus
-        # time.sleep(5) 
+        time.sleep(5) 
 
 def anti_gravity_loop():
     """Run Anti-Gravity analysis in a loop"""

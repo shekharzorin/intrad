@@ -82,6 +82,8 @@ class GlobalExchangeState:
             "MCX": {"open": "09:00", "close": "23:30", "days": [0,1,2,3,4]}
         }
         self.token_map = {} # Dynamic token-to-symbol mapping
+        self.agent_queue = asyncio.Queue() # Performance: Queue for analytical tasks
+        self._worker_task = None
 
         # --- COMMODITY LIVE DATA MANAGER (Non-intrusive, read-only) ---
         self.commodity_manager = CommodityLiveManager()
@@ -202,7 +204,10 @@ async def start_data_engine():
                         })
                     
                     if state.is_running:
-                        threading.Thread(target=run_agent_pipeline, args=(name, ltp, close)).start()
+                        # Put in queue for worker instead of spawning new thread per tick
+                        # Since we are in a sync callback, we use call_soon_threadsafe if needed, 
+                        # but LDM handles this bridging
+                        state.agent_queue.put_nowait((name, ltp, close))
                 except Exception as e:
                     state.add_log(f"Tick Error ({name}): {e}")
 
@@ -298,13 +303,23 @@ async def start_commodity_data_engine():
 async def stop_commodity_data_engine():
     """Safely shut down commodity live data. Clears cache, sets DISCONNECTED."""
     try:
-        cm = state.commodity_manager
-        if cm.is_active():
-            state.add_log("Stopping Commodity Live Data...")
-            await cm.stop()
-            state.add_log("Commodity live feed stopped.")
+        await state.commodity_manager.stop()
     except Exception as e:
-        state.add_log(f"Commodity stop error: {e}")
+        state.add_log(f"Error stopping commodity feed: {e}")
+
+async def agent_worker():
+    """Worker loop to process ticks from the queue sequentially but non-blockingly"""
+    while True:
+        try:
+            symbol, ltp, close = await state.agent_queue.get()
+            # Run the analytical pipeline in a separate thread if agents are sync
+            # or await if they are async. Looking at them, they seem sync.
+            # Using run_in_executor to keep the loop free
+            await asyncio.get_event_loop().run_in_executor(None, run_agent_pipeline, symbol, ltp, close)
+            state.agent_queue.task_done()
+        except Exception as e:
+            print(f"[WORKER] Error: {e}")
+            await asyncio.sleep(1)
 
 def run_agent_pipeline(symbol, ltp, close):
     """Agent V2 Analytical Chain - Decoupled Routing"""
@@ -899,6 +914,8 @@ if __name__ == "__main__":
     def initial_start():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        # Start worker as part of the loop
+        state._worker_task = loop.create_task(agent_worker())
         loop.run_until_complete(start_data_engine())
         
     threading.Thread(target=initial_start, daemon=True).start()

@@ -41,6 +41,9 @@ class AntiGravityAgent:
         """
         Process a new tick and return a signal if any.
         """
+        if price <= 0:
+            return None
+            
         history = self._get_history(symbol)
         prices = history['prices']
         volumes = history['volumes']

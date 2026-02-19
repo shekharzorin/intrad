@@ -64,14 +64,27 @@ class AliceBlueAdapter(BrokerDataAdapter):
             print("[ADAPTER] Authentication successful. Starting WebSocket...")
             
             # Wrap standard pya3 callbacks to bridge to our async Manager if needed
-            # But the library is synchronous internally. We'll use the callback provided.
-            self.alice.start_websocket(
-                socket_open_callback=self._on_open,
-                socket_close_callback=self._on_close,
-                socket_error_callback=self._on_error,
-                subscription_callback=self.callback,
-                run_in_background=True
-            )
+            # Support multiple pya3 versions (some use socket_open_callback, others use on_open)
+            try:
+                self.alice.start_websocket(
+                    socket_open_callback=self._on_open,
+                    socket_close_callback=self._on_close,
+                    socket_error_callback=self._on_error,
+                    subscription_callback=self.callback,
+                    run_in_background=True
+                )
+            except TypeError:
+                try:
+                    self.alice.start_websocket(
+                        on_open=self._on_open,
+                        on_close=self._on_close,
+                        on_error=self._on_error,
+                        on_data=self.callback,
+                        run_in_background=True
+                    )
+                except Exception as e:
+                    print(f"[ADAPTER] Failed to start WebSocket: {e}")
+                    return False
             
             # Wait for connection
             for _ in range(10):

@@ -2,6 +2,7 @@
 import asyncio
 import time
 import json
+import threading
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from .broker_adapter import AliceBlueAdapter, BrokerDataAdapter
@@ -25,6 +26,7 @@ class LiveDataManager:
         self.subscriptions = []
         self.market_cache: Dict[str, Dict[str, Any]] = {}
         self.lock = asyncio.Lock()
+        self.sync_lock = threading.Lock()
         
         # Internal Event Handlers
         self.callbacks: List[Callable] = []
@@ -148,24 +150,31 @@ class LiveDataManager:
 
         # Extract basic info
         token = message.get("tk")
-        # We need a token-to-symbol map if we want named keys in cache
-        # For now, let's use token as key if name is missing
+        if not token:
+            return
+
+        # Use token as fallback symbol name
         symbol = message.get("ts", str(token))
         
-        tick_data = {
-            "ltp": float(message.get("lp", 0)),
-            "bid": float(message.get("bp1", 0)),
-            "ask": float(message.get("sp1", 0)),
-            "volume": float(message.get("v", 0)),
-            "timestamp": datetime.now().isoformat(),
-            "raw": message
-        }
+        try:
+            tick_data = {
+                "ltp": float(message.get("lp", 0)),
+                "bid": float(message.get("bp1", 0) or 0),
+                "ask": float(message.get("sp1", 0) or 0),
+                "volume": float(message.get("v", 0) or 0),
+                "timestamp": datetime.now().isoformat(),
+                "raw": message
+            }
+        except (ValueError, TypeError):
+            # Ignore malformed numeric data
+            return
 
         if tick_data["ltp"] <= 0: return
 
         # Update Cache
-        self.market_cache[symbol] = tick_data
-        self.last_update = datetime.now().isoformat()
+        with self.sync_lock:
+             self.market_cache[symbol] = tick_data
+             self.last_update = datetime.now().isoformat()
 
         # Update legacy DataBus for backward compatibility
         try:

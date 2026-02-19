@@ -1,50 +1,44 @@
+import threading
+
 class DataBus:
     """
     Shared data bus for live market data across agents.
+    Thread-safe implementation.
     """
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(DataBus, cls).__new__(cls)
-            cls._instance.data = {}
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(DataBus, cls).__new__(cls)
+                cls._instance.data = {}
+                cls._instance.lock = threading.Lock()
         return cls._instance
 
     def __setitem__(self, key, value):
-        """
-        Allow dictionary-style assignment: data_bus[symbol] = data
-        """
-        self.data[key] = value
+        with self.lock:
+            self.data[key] = value
 
     def __getitem__(self, key):
-        """
-        Allow dictionary-style access: data_bus[symbol]
-        """
-        return self.data.get(key, None)
+        with self.lock:
+            return self.data.get(key, None)
 
     def update_data(self, symbol, data):
-        """
-        Update live data for a symbol.
-        """
-        self.data[symbol] = data
+        with self.lock:
+            self.data[symbol] = data
 
     def get_data(self, symbol):
-        """
-        Get live data for a symbol.
-        """
-        return self.data.get(symbol, None)
+        with self.lock:
+            return self.data.get(symbol, None)
 
     def get_all_data(self):
-        """
-        Get all live data.
-        """
-        return self.data
+        with self.lock:
+            return self.data.copy()
 
     def delete_data(self, symbol):
-        """
-        Delete live data for a symbol.
-        """
-        if symbol in self.data:
-            del self.data[symbol]
-            return True
-        return False
+        with self.lock:
+            if symbol in self.data:
+                del self.data[symbol]
+                return True
+            return False

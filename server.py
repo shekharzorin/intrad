@@ -34,6 +34,11 @@ API_KEY = os.getenv("ALICEBLUE_API_KEY")
 USER_ID = os.getenv("ALICEBLUE_USER_ID")
 TOTP_SECRET = os.getenv("ALICEBLUE_TOTP_SECRET")
 
+# Fail-fast check for critical credentials
+if not all([API_KEY, USER_ID, TOTP_SECRET]):
+    print("❌ CRITICAL: Missing ALICEBLUE_API_KEY, ALICEBLUE_USER_ID, or ALICEBLUE_TOTP_SECRET in .env")
+    print("❌ Algo system will start in MOCK/SIMULATION mode only.")
+
 class GlobalExchangeState:
     def __init__(self):
         self.metrics = {
@@ -76,6 +81,7 @@ class GlobalExchangeState:
             "BSE": {"open": "09:15", "close": "15:30", "days": [0,1,2,3,4]},
             "MCX": {"open": "09:00", "close": "23:30", "days": [0,1,2,3,4]}
         }
+        self.token_map = {} # Dynamic token-to-symbol mapping
 
         # --- COMMODITY LIVE DATA MANAGER (Non-intrusive, read-only) ---
         self.commodity_manager = CommodityLiveManager()
@@ -142,7 +148,9 @@ async def start_data_engine():
         "NATGASMINI": {"exch": "MCX", "token": 488509, "segment": "MCX"}
     }
     
-    token_map = {str(cfg['token']): name for name, cfg in symbols_mgr.items()}
+    with state.lock:
+        for name, cfg in symbols_mgr.items():
+            state.token_map[str(cfg['token'])] = name
     
     try:
         # Check environment variables
@@ -169,9 +177,12 @@ async def start_data_engine():
 
         # Define bridge callback
         def server_tick_handler(msg):
-            if msg is None: return
+            if msg is None or not isinstance(msg, dict): return
             token = msg.get('tk')
-            name = token_map.get(str(token))
+            if not token: return
+            
+            with state.lock:
+                name = state.token_map.get(str(token))
             
             if name and name in state.monitored_instruments:
                 try:
@@ -576,6 +587,7 @@ def get_commodity_snapshot(symbol: str):
         # Fallback to main market_data state
         with state.lock:
             cached = state.market_data.get(symbol.upper())
+            if cached:
                 return {
                     "status": "success",
                     "instrument": symbol.upper(),
@@ -616,6 +628,7 @@ async def select_symbol(request: Request):
     with state.lock:
         state.active_symbol = symbol
         state.active_exch = exch
+        state.token_map[str(inst["token"])] = symbol
         
         # Initialize with LOADING status instead of 0.0 to trigger UI shimmer
         if symbol not in state.market_data or state.market_data[symbol].get("ltp") == 0:
@@ -890,5 +903,5 @@ if __name__ == "__main__":
         
     threading.Thread(target=initial_start, daemon=True).start()
     
-    print(" Anti-Gravity Web Server starting at http://127.0.0.1:8001")
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    print(" Anti-Gravity Web Server starting at http://0.0.0.0:8001")
+    uvicorn.run(app, host="0.0.0.0", port=8001)

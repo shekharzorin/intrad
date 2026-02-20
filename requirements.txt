@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-dotenv
+websocket-client
+pya3
+pyotp
+requests
+typing-extensions
